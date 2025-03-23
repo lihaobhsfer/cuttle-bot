@@ -55,11 +55,11 @@ class TestMainSix(MainTestBase):
             "0",  # Select 3 of Clubs
             "n",  # Don't save initial state
             # Game actions
-            "5",  # p0 Play King of Spades (face card)
-            "4",  # p1 Play King of Diamonds (face card)
-            "5",  # p0 Play Six of Hearts (one-off) - Counterable
-            "0",  # p1 resolves
-            "e",  # End game
+            "King of Spades as face card",  # p0 Play King of Spades (face card)
+            "King of Diamonds as face card",  # p1 Play King of Diamonds (face card)
+            "Six of Hearts as one-off",  # p0 Play Six of Hearts (one-off) - Counterable
+            "Resolve",  # p1 resolves
+            "end game",  # End game
             "n",  # Don't save final game state
         ]
         self.setup_mock_input(mock_input, mock_inputs)

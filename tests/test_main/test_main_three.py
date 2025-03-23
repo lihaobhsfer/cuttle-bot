@@ -62,7 +62,7 @@ class TestMainThree(MainTestBase):
             "4",  # p0 Play Three of Hearts (one-off)
             "0",  # p1 resolves
             "0",  # p0 Select Ace of Diamonds from discard pile
-            "e",  # p1 End game
+            "end game",  # p1 End game
             "n",  # Don't save final game state
         ]
         self.setup_mock_input(mock_input, mock_inputs)
@@ -160,9 +160,9 @@ class TestMainThree(MainTestBase):
             "0",  # Select 3 of Clubs
             "n",  # Don't save initial state
             # Game actions
-            "6",  # p0 Play Three of Hearts (one-off)
-            "0",  # p1 resolves
-            "e",  # End game
+            "Three of Hearts as one-off",  # p0 Play Three of Hearts (one-off)
+            "Resolve",  # p1 resolves
+            "end game",  # End game
             "n",  # Don't save final game state
         ]
         self.setup_mock_input(mock_input, mock_inputs)
@@ -240,12 +240,12 @@ class TestMainThree(MainTestBase):
             "0",  # Select 3 of Clubs
             "n",  # Don't save initial state
             # Game actions
-            "2",  # p0 Play 10 of Hearts (points)
-            "1",  # p1 Play 9 of Diamonds (points)
-            "6",  # p0 Play Three of Hearts (one-off)
-            "0",  # p1 counters with Two of Diamonds
-            "0",  # p0 resolves
-            "e",  # End game
+            "Ten of Hearts as points",  # p0 Play 10 of Hearts (points)
+            "Nine of Diamonds as points",  # p1 Play 9 of Diamonds (points)
+            "Three of Hearts as one-off",  # p0 Play Three of Hearts (one-off)
+            "Counter",  # p1 counters with Two of Diamonds
+            "Resolve",  # p0 resolves
+            "end game",  # End game
             "n",  # Don't save final game state
         ]
         self.setup_mock_input(mock_input, mock_inputs)
