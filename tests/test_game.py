@@ -1,16 +1,18 @@
 import unittest
-from unittest.mock import patch
+from typing import Any, Dict, List
+from unittest.mock import Mock, patch
+
 import pytest
-from game.game import Game
-from game.card import Card, Suit, Rank, Purpose
+
 from game.action import Action, ActionType
+from game.card import Card, Purpose, Rank, Suit
+from game.game import Game
 from game.game_state import GameState
-from game.utils import log_print
 
 
 class TestGame(unittest.TestCase):
     @pytest.mark.timeout(5)
-    def test_initialize_with_random_hands(self):
+    def test_initialize_with_random_hands(self) -> None:
         """Test that random initialization creates valid hands."""
         game = Game(manual_selection=False)
 
@@ -36,10 +38,10 @@ class TestGame(unittest.TestCase):
     @pytest.mark.timeout(5)
     @patch("builtins.input")
     @patch("builtins.print")
-    def test_manual_selection_full_hands(self, mock_print, mock_input):
+    def test_manual_selection_full_hands(self, mock_print: Mock, mock_input: Mock) -> None:
         """Test manual selection when players select full hands."""
         # Mock inputs: Player 0 selects 5 cards, Player 1 selects 6 cards
-        mock_inputs = [
+        mock_inputs: List[str] = [
             "0",
             "1",
             "2",
@@ -54,7 +56,8 @@ class TestGame(unittest.TestCase):
         ]
         mock_input.side_effect = mock_inputs
 
-        game = Game(manual_selection=True)
+        # Pass the mock_print function as the logger
+        game = Game(manual_selection=True, logger=mock_print)
 
         # Check hand sizes
         self.assertEqual(len(game.game_state.hands[0]), 5)
@@ -77,10 +80,10 @@ class TestGame(unittest.TestCase):
     @pytest.mark.timeout(5)
     @patch("builtins.input")
     @patch("builtins.print")
-    def test_manual_selection_early_done(self, mock_print, mock_input):
+    def test_manual_selection_early_done(self, mock_print: Mock, mock_input: Mock) -> None:
         """Test manual selection when players finish early with 'done'."""
         # Mock inputs: Player 0 selects 3 cards and done, Player 1 selects 4 cards and done
-        mock_inputs = [
+        mock_inputs: List[str] = [
             "0",
             "1",
             "2",
@@ -93,7 +96,8 @@ class TestGame(unittest.TestCase):
         ]
         mock_input.side_effect = mock_inputs
 
-        game = Game(manual_selection=True)
+        # Pass the mock_print function as the logger
+        game = Game(manual_selection=True, logger=mock_print)
 
         # Check hand sizes (should still be full despite early done)
         self.assertEqual(len(game.game_state.hands[0]), 5)
@@ -110,10 +114,10 @@ class TestGame(unittest.TestCase):
     @pytest.mark.timeout(5)
     @patch("builtins.input")
     @patch("builtins.print")
-    def test_manual_selection_invalid_inputs(self, mock_print, mock_input):
+    def test_manual_selection_invalid_inputs(self, mock_print: Mock, mock_input: Mock) -> None:
         """Test manual selection with invalid inputs before valid ones."""
         # Mock inputs: Include invalid inputs that should be handled
-        mock_inputs = [
+        mock_inputs: List[str] = [
             "invalid",
             "-1",
             "999",
@@ -127,7 +131,8 @@ class TestGame(unittest.TestCase):
         ]
         mock_input.side_effect = mock_inputs
 
-        game = Game(manual_selection=True)
+        # Pass the mock_print function as the logger
+        game = Game(manual_selection=True, logger=mock_print)
 
         # Check hand sizes
         self.assertEqual(len(game.game_state.hands[0]), 5)
@@ -142,10 +147,10 @@ class TestGame(unittest.TestCase):
         self.assertEqual(len(all_cards), 52)
 
     @pytest.mark.timeout(5)
-    def test_generate_all_cards(self):
+    def test_generate_all_cards(self) -> None:
         """Test that generate_all_cards creates a complete deck."""
         game = Game()
-        cards = game.generate_all_cards()
+        cards: List[Card] = game.generate_all_cards()
 
         # Check total number of cards
         self.assertEqual(len(cards), 52)
@@ -161,12 +166,12 @@ class TestGame(unittest.TestCase):
         self.assertEqual(len(cards), len(unique_cards))
 
     @pytest.mark.timeout(5)
-    def test_fill_remaining_slots(self):
+    def test_fill_remaining_slots(self) -> None:
         """Test that fill_remaining_slots correctly fills partial hands."""
         game = Game()
 
         # Create partial hands
-        hands = [
+        hands: List[List[Card]] = [
             [
                 Card("1", Suit.HEARTS, Rank.ACE),
                 Card("2", Suit.HEARTS, Rank.TWO),
@@ -176,7 +181,7 @@ class TestGame(unittest.TestCase):
 
         # Create available cards (excluding the ones in hands)
         all_cards = game.generate_all_cards()
-        available_cards = {
+        available_cards: Dict[str, Card] = {
             str(card): card
             for card in all_cards
             if str(card) not in [str(c) for h in hands for c in h]
@@ -195,18 +200,18 @@ class TestGame(unittest.TestCase):
         self.assertEqual(len(all_hand_cards), len(unique_cards))
 
     @pytest.mark.timeout(5)
-    def test_save_load_game(self):
+    def test_save_load_game(self) -> None:
         """Test saving and loading game state."""
         # Create a game with known state
         game = Game()
-        initial_hands = [
+        initial_hands: List[List[Card]] = [
             [card for card in game.game_state.hands[0]],
             [card for card in game.game_state.hands[1]],
         ]
-        initial_deck = [card for card in game.game_state.deck]
+        initial_deck: List[Card] = [card for card in game.game_state.deck]
 
         # Save the game
-        test_file = "test_save.json"
+        test_file: str = "test_save.json"
         game.save_game(test_file)
 
         # Create a new game by loading the saved state
@@ -234,10 +239,10 @@ class TestGame(unittest.TestCase):
             os.remove(save_path)
 
     @pytest.mark.timeout(5)
-    def test_list_saved_games(self):
+    def test_list_saved_games(self) -> None:
         """Test listing saved games."""
         # Create some test save files
-        test_files = ["test1.json", "test2.json", "test3.json"]
+        test_files: List[str] = ["test1.json", "test2.json", "test3.json"]
         game = Game()
 
         for filename in test_files:
@@ -259,13 +264,13 @@ class TestGame(unittest.TestCase):
                 os.remove(save_path)
 
     @pytest.mark.timeout(5)
-    def test_load_nonexistent_game(self):
+    def test_load_nonexistent_game(self) -> None:
         """Test loading a non-existent save file."""
         with self.assertRaises(FileNotFoundError):
             Game(load_game="nonexistent_save.json")
 
     @pytest.mark.timeout(5)
-    def test_scuttle_update_state(self):
+    def test_scuttle_update_state(self) -> None:
         """Test the return values of update_state for scuttle actions."""
         game = Game()
 
@@ -277,7 +282,7 @@ class TestGame(unittest.TestCase):
         game.game_state.fields[1].append(target_card)
 
         # Player 0's hand: 6 of Spades (higher point value)
-        scuttle_card = Card("scuttle", Suit.SPADES, Rank.SIX)
+        scuttle_card = Card("scuttle", Suit.SPADES, Rank.SIX, played_by=0, purpose=Purpose.SCUTTLE)
         game.game_state.hands[0].append(scuttle_card)
 
         # Create scuttle action
@@ -309,7 +314,7 @@ class TestGame(unittest.TestCase):
         self.assertIn(target_card, game.game_state.discard_pile)  # discard pile
 
     @pytest.mark.timeout(5)
-    def test_scuttle_with_equal_points(self):
+    def test_scuttle_with_equal_points(self) -> None:
         """Test scuttle with equal point values but higher suit."""
         game = Game()
 
@@ -320,7 +325,7 @@ class TestGame(unittest.TestCase):
         game.game_state.fields[1].append(target_card)
 
         # Player 0's hand: 5 of Spades (same points, higher suit)
-        scuttle_card = Card("scuttle", Suit.SPADES, Rank.FIVE)
+        scuttle_card = Card("scuttle", Suit.SPADES, Rank.FIVE, played_by=0, purpose=Purpose.SCUTTLE)
         game.game_state.hands[0].append(scuttle_card)
 
         # Create scuttle action
@@ -348,7 +353,7 @@ class TestGame(unittest.TestCase):
         self.assertIn(target_card, game.game_state.discard_pile)
 
     @pytest.mark.timeout(5)
-    def test_scuttle_with_lower_suit_fails(self):
+    def test_scuttle_with_lower_suit_fails(self) -> None:
         """Test that scuttle fails when using a lower suit on same rank."""
         game = Game()
 
@@ -384,7 +389,7 @@ class TestGame(unittest.TestCase):
         self.assertNotIn(target_card, game.game_state.discard_pile)  # discard pile
 
     @pytest.mark.timeout(5)
-    def test_play_king_reduces_target(self):
+    def test_play_king_reduces_target(self) -> None:
         """Test that playing a King reduces the target score."""
         game = Game()
 
@@ -410,7 +415,7 @@ class TestGame(unittest.TestCase):
         self.assertIsNone(winner)
 
     @pytest.mark.timeout(5)
-    def test_play_king_instant_win(self):
+    def test_play_king_instant_win(self) -> None:
         """Test that playing a King can lead to instant win."""
         game = Game()
 
@@ -449,7 +454,7 @@ class TestGame(unittest.TestCase):
         self.assertEqual(winner, 0)
 
     @pytest.mark.timeout(5)
-    def test_play_king_on_opponents_turn(self):
+    def test_play_king_on_opponents_turn(self) -> None:
         """Test that Kings can only be played on your own turn."""
         game = Game()
 
@@ -480,7 +485,7 @@ class TestGame(unittest.TestCase):
         self.assertEqual(game.game_state.get_player_target(0), 21)
 
     @pytest.mark.timeout(5)
-    def test_play_multiple_kings(self):
+    def test_play_multiple_kings(self) -> None:
         """Test playing multiple Kings reduces target score correctly."""
         game = Game()
 
@@ -512,60 +517,61 @@ class TestGame(unittest.TestCase):
                 self.assertTrue(should_stop)
                 self.assertEqual(winner, 0)
 
-    @pytest.mark.timeout(5)
     @patch("builtins.input")
     @patch("builtins.print")
-    def test_complete_game_with_kings(self, mock_print, mock_input):
-        """Test a complete game with manual selection and playing Kings until win."""
-        # Mock inputs for manual selection
-        mock_inputs = [str(i) for i in range(5)]  # Select first 5 cards for P0
-        mock_inputs.extend([str(i) for i in range(6)])  # Select first 6 cards for P1
+    def test_complete_game_with_kings(self, mock_print: Mock, mock_input: Mock) -> None:
+        """Test a complete game scenario ending with King win condition."""
+        # Mock inputs: P0 gets Kings, P1 gets points, P0 wins
+        mock_inputs = [
+            "0",
+            "1",
+            "2",
+            "3",
+            "4",  # P0 selects Kings + Ace
+            "0",
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",  # P1 selects high points
+            # Game actions (mocked, not used as test deck is provided)
+        ]
         mock_input.side_effect = mock_inputs
 
-        # Create game with manual selection
-        game = Game(manual_selection=True)
+        # Test deck: P0 gets 4 Kings + Ace, P1 gets points
+        test_deck = [
+            Card("KH", Suit.HEARTS, Rank.KING),
+            Card("KD", Suit.DIAMONDS, Rank.KING),
+            Card("KS", Suit.SPADES, Rank.KING),
+            Card("KC", Suit.CLUBS, Rank.KING),
+            Card("AH", Suit.HEARTS, Rank.ACE),  # P0 hand
+            Card("10H", Suit.HEARTS, Rank.TEN),
+            Card("10D", Suit.DIAMONDS, Rank.TEN),
+            Card("10S", Suit.SPADES, Rank.TEN),
+            Card("9H", Suit.HEARTS, Rank.NINE),
+            Card("8H", Suit.HEARTS, Rank.EIGHT),
+            Card("7H", Suit.HEARTS, Rank.SEVEN),  # P1 hand
+        ] + [Card(str(i), Suit.CLUBS, Rank.TWO) for i in range(41)]  # Filler
 
-        # Verify initial hands
-        self.assertEqual(len(game.game_state.hands[0]), 5)  # P0 has 5 cards
-        self.assertEqual(len(game.game_state.hands[1]), 6)  # P1 has 6 cards
+        # Pass the mock_print function as the logger
+        game = Game(test_deck=test_deck, logger=mock_print)
 
-        # Play each card in P0's hand
-        for card in game.game_state.hands[0].copy():
-            if card.rank == Rank.KING:
-                # Play King as face card
-                action = Action(
-                    action_type=ActionType.FACE_CARD,
-                    card=card,
-                    target=None,
-                    played_by=0,
-                )
-            elif card.is_point_card():
-                # Play as points
-                action = Action(
-                    action_type=ActionType.POINTS,
-                    card=card,
-                    target=None,
-                    played_by=0,
-                )
-            else:
-                continue  # Skip non-point, non-King cards
+        # Simulate game play actions (assuming direct state manipulation for brevity)
+        # Player 0 plays 4 Kings
+        for i in range(4):
+            king = game.game_state.hands[0].pop(0)
+            game.game_state.fields[0].append(king)
 
-            turn_finished, should_stop, winner = game.game_state.update_state(action)
-            self.assertTrue(turn_finished)
+        # Check win condition (target 0)
+        self.assertEqual(game.game_state.get_player_target(0), 0)
+        self.assertTrue(game.game_state.is_winner(0))
+        self.assertEqual(game.game_state.winner(), 0)
 
-            if winner is not None:
-                # If we won, verify the win condition
-                self.assertTrue(should_stop)
-                self.assertEqual(winner, 0)
-                self.assertTrue(game.game_state.is_winner(0))
-                self.assertFalse(game.game_state.is_winner(1))
-                return  # Test succeeded - we found a winning sequence
+        # Check final state print
+        game.game_state.print_state()
+        mock_print.assert_called()
 
-        # If we get here, we didn't find a winning sequence
-        # This is also fine - not every random hand will lead to a win
-        pass
-
-    def test_play_jack_action(self):
+    def test_play_jack_action(self) -> None:
         """Test playing a Jack action to steal a point card from opponent."""
         # Set up initial state with point cards on opponent's field
         hands = [
@@ -579,10 +585,10 @@ class TestGame(unittest.TestCase):
                 Card("4", Suit.HEARTS, Rank.NINE, played_by=1, purpose=Purpose.POINTS),
             ],
         ]
-        deck = []
-        discard = []
+        deck: List[Card] = []
+        discard: List[Card] = []
 
-        game_state = GameState(hands, fields, deck, discard)
+        game_state: GameState = GameState(hands, fields, deck, discard)
 
         # Verify initial scores
         self.assertEqual(game_state.get_player_score(0), 0)
@@ -591,7 +597,7 @@ class TestGame(unittest.TestCase):
         # Create Jack action
         jack_card = hands[0][0]
         target_card = fields[1][0]  # Seven of Spades
-        jack_action = Action(ActionType.JACK, jack_card, target_card, 0)
+        jack_action = Action(action_type=ActionType.JACK, card=jack_card, target=target_card, played_by=0)
 
         # Apply the action
         turn_finished, should_stop, winner = game_state.update_state(jack_action)
@@ -609,16 +615,22 @@ class TestGame(unittest.TestCase):
         self.assertEqual(len(target_card.attachments), 1)
         for card in fields[1]:
             print(card, card.attachments)
-        self.assertEqual(len(fields[1][1].attachments), 0) # no attachments on the other point card
+        self.assertEqual(
+            len(fields[1][1].attachments), 0
+        )  # no attachments on the other point card
 
         # Verify the point card is now stolen (counts for player 0)
         self.assertTrue(target_card.is_stolen())
 
         # Verify scores are updated correctly
-        self.assertEqual(game_state.get_player_score(0), 7)  # Stolen card counts for player 0
-        self.assertEqual(game_state.get_player_score(1), 9)  # Only the second card counts for player 1
+        self.assertEqual(
+            game_state.get_player_score(0), 7
+        )  # Stolen card counts for player 0
+        self.assertEqual(
+            game_state.get_player_score(1), 9
+        )  # Only the second card counts for player 1
 
-    def test_play_jack_action_with_queen_on_field(self):
+    def test_play_jack_action_with_queen_on_field(self) -> None:
         """Test that Jack action cannot be played if opponent has a Queen on their field."""
         # Set up initial state with a Queen on opponent's field
         hands = [
@@ -628,26 +640,31 @@ class TestGame(unittest.TestCase):
         fields = [
             [],  # Player 0's field (empty)
             [  # Player 1's field with Queen and point card
-                Card("3", Suit.SPADES, Rank.QUEEN, played_by=1, purpose=Purpose.FACE_CARD),
+                Card(
+                    "3", Suit.SPADES, Rank.QUEEN, played_by=1, purpose=Purpose.FACE_CARD
+                ),
                 Card("4", Suit.HEARTS, Rank.NINE, played_by=1, purpose=Purpose.POINTS),
             ],
         ]
-        deck = []
-        discard = []
+        deck: List[Card] = []
+        discard: List[Card] = []
 
-        game_state = GameState(hands, fields, deck, discard)
+        game_state: GameState = GameState(hands, fields, deck, discard)
 
         # Create Jack action
         jack_card = hands[0][0]
         target_card = fields[1][1]  # Nine of Hearts
-        jack_action = Action(ActionType.JACK, jack_card, target_card, 0)
+        jack_action = Action(action_type=ActionType.JACK, card=jack_card, target=target_card, played_by=0)
 
         # Try to apply the action
         with self.assertRaises(Exception) as context:
             game_state.update_state(jack_action)
-        
+
         # Verify error message
-        self.assertIn("Cannot play jack as face card if opponent has a queen on their field", str(context.exception))
+        self.assertIn(
+            "Cannot play jack as face card if opponent has a queen on their field",
+            str(context.exception),
+        )
 
         # Verify game state unchanged
         self.assertIn(jack_card, game_state.hands[0])

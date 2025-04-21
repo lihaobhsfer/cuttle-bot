@@ -4,19 +4,18 @@ Documentation generation script for the Cuttle Bot project.
 This script generates HTML documentation using pdoc.
 """
 
-import os
-import sys
 import pdoc
 from pathlib import Path
 
-def generate_docs():
+
+def generate_docs() -> None:
     """
     Generate documentation for the project.
     """
     # Define the output directory
     output_dir = Path("docs")
     output_dir.mkdir(exist_ok=True)
-    
+
     # Define the modules to document
     modules = [
         "game",
@@ -30,13 +29,13 @@ def generate_docs():
         "game.utils",
         "main",
     ]
-    
+
     # Generate documentation
     pdoc.render.configure(
         docformat="google",  # Use Google-style docstrings
-        show_source=True,    # Show source code
+        show_source=True,  # Show source code
     )
-    
+
     # Generate documentation for each module
     for module in modules:
         try:
@@ -47,9 +46,10 @@ def generate_docs():
             print(f"Generated documentation for {module}")
         except Exception as e:
             print(f"Error generating documentation for {module}: {e}")
-    
+
     print(f"\nDocumentation generated in {output_dir.absolute()}")
     print("You can view the documentation by opening docs/index.html in your browser")
 
+
 if __name__ == "__main__":
-    generate_docs() 
+    generate_docs()

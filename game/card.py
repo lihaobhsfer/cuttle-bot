@@ -11,7 +11,7 @@ This module defines the core card-related classes and enums used in the game:
 from __future__ import annotations
 
 from enum import Enum
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 
 class Card:
@@ -66,9 +66,13 @@ class Card:
         Returns:
             str: String representation of the card.
         """
-        jack_prefix = "[Jack]" * len(self.attachments) + " " if len(self.attachments) > 0 else ""
+        jack_prefix = (
+            "[Jack]" * len(self.attachments) + " " if len(self.attachments) > 0 else ""
+        )
         stolen_prefix = "[Stolen from opponent] " if self.is_stolen() else ""
-        return f"{stolen_prefix}{jack_prefix}{self.rank.value[0]} of {self.suit.value[0]}"
+        return (
+            f"{stolen_prefix}{jack_prefix}{self.rank.value[0]} of {self.suit.value[0]}"
+        )
 
     def __repr__(self) -> str:
         """Get a string representation of the card for debugging.
@@ -87,7 +91,7 @@ class Card:
         """
         self.played_by = None
         self.purpose = None
-    
+
     def is_point_card(self) -> bool:
         """Check if the card can be played for points.
 
@@ -156,7 +160,7 @@ class Card:
             bool: True if the card can be played as a one-off.
         """
         return self.rank in [Rank.ACE, Rank.THREE, Rank.FOUR, Rank.FIVE, Rank.SIX]
-    
+
     def is_stolen(self) -> bool:
         """Check if the card is currently stolen by the opponent.
 
@@ -167,6 +171,34 @@ class Card:
             bool: True if the card is stolen.
         """
         return len(self.attachments) % 2 == 1
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize the Card object to a dictionary."""
+        return {
+            "id": self.id,
+            "suit": self.suit.name,
+            "rank": self.rank.name,
+            "played_by": self.played_by,
+            "purpose": self.purpose.name if self.purpose else None,
+            "attachments": [att.to_dict() for att in self.attachments],
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> Card:
+        """Deserialize a Card object from a dictionary."""
+        attachments_data = data.get("attachments", [])
+        attachments = [
+            cls.from_dict(att_data) for att_data in attachments_data if att_data
+        ]
+        purpose_name = data.get("purpose")
+        return cls(
+            id=data["id"],
+            suit=Suit[data["suit"]],
+            rank=Rank[data["rank"]],
+            played_by=data.get("played_by"),
+            purpose=Purpose[purpose_name] if purpose_name else None,
+            attachments=attachments,
+        )
 
 
 class Suit(Enum):
@@ -239,3 +271,4 @@ class Purpose(Enum):
     ONE_OFF = "One Off"
     COUNTER = "Counter"
     JACK = "Jack"
+    SCUTTLE = "Scuttle"

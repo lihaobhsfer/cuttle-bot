@@ -1,232 +1,354 @@
-import unittest
-from unittest.mock import patch
-import sys
-import io
-import termios
-import tty
-import os
-import re
-import pty
 import fcntl
+import io
+import os
+import pty
+import re
+import sys
+import termios
+import unittest
+from typing import Any, List, Tuple
+from unittest.mock import Mock, patch
+
 from game.input_handler import get_interactive_input
 
+
 class TestInputHandler(unittest.TestCase):
-    def setUp(self):
+    leader_fd: int
+    follower_fd: int
+    original_stdout: Any
+    stdout_capture: io.StringIO
+    mock_termios_settings: Any
+    cleanup_chars: List[str]
+    test_options: List[str]
+
+    def setUp(self) -> None:
         # Create a list of test options with index prefixes
         self.test_options = [
             "0: King of Hearts",
-            "1: King of Diamonds", 
+            "1: King of Diamonds",
             "2: Queen of Hearts",
             "3: Queen of Spades",
-            "4: Ace of Clubs"
+            "4: Ace of Clubs",
         ]
-        
+
         # Create a pseudo-terminal pair
-        self.master_fd, self.slave_fd = pty.openpty()
-        
+        self.leader_fd, self.follower_fd = pty.openpty()
+
         # Save original stdout and create StringIO for capturing output
         self.original_stdout = sys.stdout
         self.stdout_capture = io.StringIO()
         sys.stdout = self.stdout_capture
 
-        # Set up terminal settings for the slave
-        self.mock_termios_settings = termios.tcgetattr(self.slave_fd)
-        
-        # Make the slave's file descriptor non-blocking
-        flags = fcntl.fcntl(self.slave_fd, fcntl.F_GETFL)
-        fcntl.fcntl(self.slave_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+        # Set up terminal settings for the follower
+        self.mock_termios_settings = termios.tcgetattr(self.follower_fd)
+
+        # Make the follower's file descriptor non-blocking
+        flags = fcntl.fcntl(self.follower_fd, fcntl.F_GETFL)
+        fcntl.fcntl(self.follower_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
 
         # Number of cleanup characters needed (based on max display lines + prompt)
-        self.cleanup_chars = ['\r'] * 12  # Increased from 8 to 12 for more thorough cleanup
+        self.cleanup_chars = [
+            "\r"
+        ] * 12  # Increased from 8 to 12 for more thorough cleanup
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         # Restore original stdout
         sys.stdout = self.original_stdout
         self.stdout_capture.close()
-        
-        # Close the pseudo-terminal pair
-        os.close(self.master_fd)
-        os.close(self.slave_fd)
 
-    def get_captured_output(self):
+        # Close the pseudo-terminal pair
+        os.close(self.leader_fd)
+        os.close(self.follower_fd)
+
+    def get_captured_output(self) -> str:
         """Helper to get captured output and reset the buffer"""
         output = self.stdout_capture.getvalue()
         self.stdout_capture.truncate(0)
         self.stdout_capture.seek(0)
         return output
 
-    def clean_ansi(self, text):
+    def clean_ansi(self, text: str) -> str:
         """Remove ANSI escape sequences from text"""
-        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
-        return ansi_escape.sub('', text)
+        ansi_escape = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+        return ansi_escape.sub("", text)
 
-    def get_last_display(self, output):
+    def get_last_display(self, output: str) -> str:
         """Get the last displayed state after all updates"""
         displays = output.split("Select a card:")
         return displays[-1] if displays else ""
 
-    def setup_terminal_mocks(self, mock_stdin):
+    def setup_terminal_mocks(self, mock_stdin: Mock) -> None:
         """Helper to set up terminal-related mocks"""
         mock_stdin.isatty.return_value = True
-        mock_stdin.fileno.return_value = self.slave_fd  # Use slave fd instead of 0
-        
+        mock_stdin.fileno.return_value = self.follower_fd  # Use follower fd instead of 0
+
         # Create mock terminal size tuple
         mock_terminal_size = os.terminal_size((80, 24))
-        
+
         # Patch get_terminal_size in the input_handler module
-        patcher = patch('game.input_handler.get_terminal_size', return_value=mock_terminal_size)
-        patcher.start()
-        self.addCleanup(patcher.stop)
-        
-        # Patch termios.tcgetattr to use our slave fd
-        patcher = patch('termios.tcgetattr', return_value=self.mock_termios_settings)
-        patcher.start()
-        self.addCleanup(patcher.stop)
-        
-        # Patch termios.tcsetattr
-        patcher = patch('termios.tcsetattr')
-        patcher.start()
-        self.addCleanup(patcher.stop)
-        
-        # Patch tty.setraw
-        patcher = patch('tty.setraw')
+        patcher = patch(
+            "game.input_handler.get_terminal_size", return_value=mock_terminal_size
+        )
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    @patch('game.input_handler.is_interactive_terminal')
-    @patch('sys.stdin')
-    def test_filtering_as_typing(self, mock_stdin, mock_is_interactive):
+        # Patch termios.tcgetattr to use our follower fd
+        patcher = patch("termios.tcgetattr", return_value=self.mock_termios_settings)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+        # Patch termios.tcsetattr
+        patcher = patch("termios.tcsetattr")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+        # Patch tty.setraw
+        patcher = patch("tty.setraw")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    @patch("game.input_handler.is_interactive_terminal")
+    @patch("sys.stdin")
+    def test_filtering_as_typing(self, mock_stdin: Mock, mock_is_interactive: Mock) -> None:
         """Test that options are filtered correctly as user types"""
         # Mock interactive terminal
         mock_is_interactive.return_value = True
         self.setup_terminal_mocks(mock_stdin)
-        
+
         # Simulate typing 'king' then Enter, plus cleanup characters
-        mock_stdin.read.side_effect = ['k', 'i', 'n', 'g', '\r'] + self.cleanup_chars
-        
+        mock_stdin.read.side_effect = ["k", "i", "n", "g", "\r"] + self.cleanup_chars
+
         # Run the input handler
         selected = get_interactive_input("Select a card:", self.test_options)
-        
+
         # Get captured output and clean ANSI sequences
         output = self.clean_ansi(self.get_captured_output())
         last_display = self.get_last_display(output)
-        
+
         # Verify filtering behavior
         self.assertIn("King of Hearts", last_display)
         self.assertIn("King of Diamonds", last_display)
         self.assertNotIn("Queen of Hearts", last_display)
-        self.assertEqual(selected, 0)  # First King should be selected
+        # Expect the original index
+        self.assertEqual(selected, 0)  # Should select King of Hearts index
 
-    @patch('game.input_handler.is_interactive_terminal')
-    @patch('sys.stdin')
-    def test_arrow_key_navigation(self, mock_stdin, mock_is_interactive):
+    @patch("game.input_handler.is_interactive_terminal")
+    @patch("sys.stdin")
+    def test_arrow_key_navigation(self, mock_stdin: Mock, mock_is_interactive: Mock) -> None:
         """Test arrow key navigation between options"""
         # Mock interactive terminal
         mock_is_interactive.return_value = True
         self.setup_terminal_mocks(mock_stdin)
-        
+
         # Simulate: type 'k' then down arrow then Enter, plus cleanup characters
         mock_stdin.read.side_effect = [
-            'k',  # Type 'k'
-            '\x1b', '[', 'B',  # Down arrow
-            '\r'  # Enter
+            "k",  # Type 'k'
+            "\x1b",
+            "[",
+            "B",  # Down arrow
+            "\r",  # Enter
         ] + self.cleanup_chars
-        
+
         selected = get_interactive_input("Select a card:", self.test_options)
-        
+
         # Get captured output and clean ANSI sequences
         output = self.clean_ansi(self.get_captured_output())
         last_display = self.get_last_display(output)
-        
+
         # Verify second King was selected
-        self.assertEqual(selected, 1)  # Should select King of Diamonds
-        
+        # Expect the original index
+        self.assertEqual(selected, 1)  # Should select King of Diamonds index
+
         # Verify both Kings were shown in output
         self.assertIn("King of Hearts", last_display)
         self.assertIn("King of Diamonds", last_display)
 
-    @patch('game.input_handler.is_interactive_terminal')
-    @patch('sys.stdin')
-    def test_backspace_handling(self, mock_stdin, mock_is_interactive):
+    @patch("game.input_handler.is_interactive_terminal")
+    @patch("sys.stdin")
+    def test_backspace_handling(self, mock_stdin: Mock, mock_is_interactive: Mock) -> None:
         """Test handling of backspace key"""
         # Mock interactive terminal
         mock_is_interactive.return_value = True
         self.setup_terminal_mocks(mock_stdin)
-        
+
         # Simulate: type 'queen', backspace twice, type 'g', Enter, plus cleanup
         # Add extra control characters for screen updates
-        input_sequence = [
-            'q', '\r',  # Type 'q' and redraw
-            'u', '\r',  # Type 'u' and redraw
-            'e', '\r',  # Type 'e' and redraw
-            'e', '\r',  # Type 'e' and redraw
-            'n', '\r',  # Type 'n' and redraw
-            '\x7f', '\r',  # First backspace and redraw
-            '\x7f', '\r',  # Second backspace and redraw
-            'g', '\r',  # Type 'g' and redraw
-            '\r'  # Final Enter
-        ] + self.cleanup_chars + ['\r'] * 4  # Extra cleanup chars
-        
+        input_sequence = (
+            [
+                "q",
+                "\r",  # Type 'q' and redraw
+                "u",
+                "\r",  # Type 'u' and redraw
+                "e",
+                "\r",  # Type 'e' and redraw
+                "e",
+                "\r",  # Type 'e' and redraw
+                "n",
+                "\r",  # Type 'n' and redraw
+                "\x7f",
+                "\r",  # First backspace and redraw
+                "\x7f",
+                "\r",  # Second backspace and redraw
+                "g",
+                "\r",  # Type 'g' and redraw
+                "\r",  # Final Enter
+            ]
+            + self.cleanup_chars
+            + ["\r"] * 4
+        )  # Extra cleanup chars
+
         mock_stdin.read.side_effect = input_sequence
-        
+
         selected = get_interactive_input("Select a card:", self.test_options)
-        
+
         # Get captured output and clean ANSI sequences
         output = self.clean_ansi(self.get_captured_output())
         last_display = self.get_last_display(output)
-        
+
         # After backspace, "queg" should match "Queen"
         self.assertIn("Queen", last_display)
-        self.assertEqual(selected, 2)  # Should select first Queen
+        # Expect the original index
+        self.assertEqual(selected, 2)  # Should select Queen of Hearts index
 
-    @patch('game.input_handler.is_interactive_terminal')
-    @patch('sys.stdin')
-    def test_ctrl_c_handling(self, mock_stdin, mock_is_interactive):
+    @patch("game.input_handler.is_interactive_terminal")
+    @patch("sys.stdin")
+    def test_ctrl_c_handling(self, mock_stdin: Mock, mock_is_interactive: Mock) -> None:
         """Test handling of Ctrl+C (interrupt)"""
         # Mock interactive terminal
         mock_is_interactive.return_value = True
         self.setup_terminal_mocks(mock_stdin)
-        
+
         # Simulate Ctrl+C (ASCII value 3)
-        mock_stdin.read.side_effect = ['\x03']
-        
+        mock_stdin.read.side_effect = ["\x03"]
+
         # Verify KeyboardInterrupt is raised
         with self.assertRaises(KeyboardInterrupt):
             get_interactive_input("Select a card:", self.test_options)
 
-    def test_non_interactive_terminal(self):
+    def test_non_interactive_terminal(self) -> None:
         """Test fallback behavior for non-interactive terminals"""
-        with patch('builtins.input', return_value='0'):
+        # Test selecting by index
+        with patch("builtins.input", return_value="0"):
             selected = get_interactive_input("Select a card:", self.test_options)
+            # Expect the original index
             self.assertEqual(selected, 0)
 
-        with patch('builtins.input', return_value='king'):
+        # Test selecting by text match
+        with patch("builtins.input", return_value="king"):
             selected = get_interactive_input("Select a card:", self.test_options)
-            self.assertEqual(selected, 0)  # Should match first king
+            # Expect the original index
+            self.assertEqual(selected, 0)  # Should match first king index
 
-    @patch('game.input_handler.is_interactive_terminal')
-    @patch('sys.stdin')
-    def test_empty_filter_results(self, mock_stdin, mock_is_interactive):
+        # Test ending game
+        with patch("builtins.input", return_value="e"):
+            selected = get_interactive_input("Select a card:", self.test_options)
+            # Expect -1 for end game
+            self.assertEqual(selected, -1)
+
+        # Test invalid input
+        with patch("builtins.input", return_value="invalid"):
+            selected = get_interactive_input("Select a card:", self.test_options)
+            # Expect -1 for invalid input
+            self.assertEqual(selected, -1)
+
+    @patch("game.input_handler.is_interactive_terminal")
+    @patch("sys.stdin")
+    def test_empty_filter_results(self, mock_stdin: Mock, mock_is_interactive: Mock) -> None:
         """Test behavior when filter matches no options"""
         # Mock interactive terminal
         mock_is_interactive.return_value = True
         self.setup_terminal_mocks(mock_stdin)
-        
+
         # Simulate typing 'xyz' then backspace to all then 'k' then Enter, plus cleanup
         mock_stdin.read.side_effect = [
-            'x', 'y', 'z',  # Type "xyz" (no matches)
-            '\x7f', '\x7f', '\x7f',  # Backspace all
-            'k',  # Type "k"
-            '\r'  # Enter
+            "x",
+            "y",
+            "z",  # Type "xyz" (no matches)
+            "\x7f",
+            "\x7f",
+            "\x7f",  # Backspace all
+            "k",
+            "\r",  # Enter
         ] + self.cleanup_chars
-        
+
         selected = get_interactive_input("Select a card:", self.test_options)
-        
+
         # Get captured output and clean ANSI sequences
         output = self.clean_ansi(self.get_captured_output())
         last_display = self.get_last_display(output)
-        
+
         # Should show "No matching options" then recover
         self.assertIn("No matching options", output)
         self.assertIn("King", last_display)  # After backspace and 'k'
-        self.assertEqual(selected, 0)  # Should select first King 
+        # Expect the original index
+        self.assertEqual(selected, 0)  # Expect 0 for selecting "King of Hearts" after recovery
+
+    @patch("game.input_handler.is_interactive_terminal")
+    @patch("sys.stdin")
+    def test_navigation_with_wrap_around(self, mock_stdin: Mock, mock_is_interactive: Mock) -> None:
+        """Test arrow key navigation with wrap-around"""
+        # Mock interactive terminal
+        mock_is_interactive.return_value = True
+        self.setup_terminal_mocks(mock_stdin)
+
+        # Simulate: type 'k' then down arrow then Enter, plus cleanup characters
+        mock_stdin.read.side_effect = [
+            "a",  # Type 'a'
+            "c",
+            "e",
+            "\x1b",
+            "[",
+            "B",  # Down arrow
+            "\r",  # Enter
+        ] + self.cleanup_chars
+
+        selected = get_interactive_input("Select a card:", self.test_options)
+
+        # Get captured output and clean ANSI sequences
+        output = self.clean_ansi(self.get_captured_output())
+        last_display = self.get_last_display(output)
+
+        # Verify Ace of Clubs was selected
+        # Expect the original index
+        self.assertEqual(selected, 4)  # Should select Ace of Clubs (last item)
+
+        # Verify all cards were shown in output
+        self.assertIn("Ace of Clubs", last_display)
+
+    @patch("game.input_handler.is_interactive_terminal")
+    @patch("sys.stdin")
+    def test_filter_then_navigate(self, mock_stdin: Mock, mock_is_interactive: Mock) -> None:
+        """Test filtering options then navigating the filtered list"""
+        # Mock interactive terminal
+        mock_is_interactive.return_value = True
+        self.setup_terminal_mocks(mock_stdin)
+
+        # Simulate: type 'k' then down arrow then Enter, plus cleanup characters
+        mock_stdin.read.side_effect = [
+            "k",  # Type 'k'
+            "\x1b",  # Escape
+            "[",  # Left bracket
+            "B",  # Down arrow
+            "\r",  # Enter
+        ] + self.cleanup_chars
+
+        selected = get_interactive_input("Select a card:", self.test_options)
+
+        # Get captured output and clean ANSI sequences
+        output = self.clean_ansi(self.get_captured_output())
+        last_display = self.get_last_display(output)
+
+        # Verify King of Diamonds was selected
+        # Expect the original index
+        self.assertEqual(selected, 1)  # Should select King of Diamonds
+
+        # Verify all cards were shown in output
+        self.assertIn("King of Hearts", last_display)
+        self.assertIn("King of Diamonds", last_display)
+        self.assertNotIn("Queen of Hearts", last_display)
+        self.assertNotIn("Queen of Spades", last_display)
+        self.assertNotIn("Ace of Clubs", last_display)
+
+
+if __name__ == "__main__":
+    unittest.main()

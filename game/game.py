@@ -6,17 +6,23 @@ saving/loading games, and initialization of game sessions. It supports both manu
 and automatic card selection, as well as AI players.
 """
 
-from typing import List, Dict, Optional
-from game.card import Card, Suit, Rank
-from game.game_state import GameState
-from game.serializer import save_game_state, load_game_state
-import uuid
-import random
-import os
+from __future__ import annotations
+
 import glob
-import time
+import os
+import random
 import sys
-from game.ai_player import AIPlayer
+import time
+import uuid
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+
+from game.card import Card, Rank, Suit
+from game.game_state import GameState
+from game.serializer import load_game_state, save_game_state
+
+# Import AIPlayer only for type checking
+if TYPE_CHECKING:
+    from game.ai_player import AIPlayer
 
 
 class Game:
@@ -30,22 +36,22 @@ class Game:
         game_state (GameState): The current state of the game.
         players (List[int]): List of player indices [0, 1].
         SAVE_DIR (str): Directory where game states are saved.
-        ai_player (AIPlayer): Optional AI player instance.
+        ai_player (Optional["AIPlayer"]): Optional AI player instance.
         logger: Function to use for logging (defaults to print).
     """
 
     game_state: GameState
     players: List[int]
     SAVE_DIR = "test_games"
-    ai_player: AIPlayer
+    ai_player: Optional["AIPlayer"] = None
 
     def __init__(
         self,
         manual_selection: bool = False,
         load_game: Optional[str] = None,
         test_deck: Optional[List[Card]] = None,
-        logger=print,  # Default to print if no logger provided
-        ai_player: Optional[AIPlayer] = None,
+        logger: Callable[..., Any] = print,
+        ai_player: Optional["AIPlayer"] = None,
     ):
         """Initialize a new game of Cuttle.
 
@@ -57,7 +63,7 @@ class Game:
             test_deck (Optional[List[Card]], optional): Predefined deck for testing.
                 Defaults to None.
             logger (callable, optional): Function to use for logging. Defaults to print.
-            ai_player (Optional[AIPlayer], optional): AI player instance. Defaults to None.
+            ai_player (Optional["AIPlayer"], optional): AI player instance. Defaults to None.
         """
         self.players = [0, 1]
         self.logger = logger
@@ -76,7 +82,6 @@ class Game:
             self.initialize_with_random_hands()
         self.game_state.use_ai = ai_player is not None
         self.ai_player = ai_player
-        self.game_state.ai_player = self.ai_player
 
     def save_game(self, filename: str) -> None:
         """Save the current game state to a file.
@@ -134,8 +139,8 @@ class Game:
         """
         deck = self.generate_shuffled_deck()
         hands = self.deal_cards(deck)
-        fields = [[], []]
-        self.game_state = GameState(hands, fields, deck[11:], [])
+        fields: List[List[Card]] = [[], []]
+        self.game_state = GameState(hands, fields, deck[11:], [], logger=self.logger)
 
     def initialize_with_manual_selection(self) -> None:
         """Initialize the game with manual card selection.
@@ -143,7 +148,7 @@ class Game:
         This method allows players to manually select their starting hands:
         - Player 0 can select up to 5 cards
         - Player 1 can select up to 6 cards
-        
+
         Any unselected card slots will be filled randomly.
         The remaining cards form the deck.
 
@@ -152,7 +157,7 @@ class Game:
         """
         all_cards = self.generate_all_cards()
         available_cards = {str(card): card for card in all_cards}
-        hands = [[], []]
+        hands: List[List[Card]] = [[], []]
 
         # Manual selection for both players
         for player in range(2):
@@ -192,7 +197,7 @@ class Game:
         random.shuffle(deck)
 
         # Initialize game state with empty fields for both players
-        fields = [[], []]  # Initialize empty fields for both players
+        fields: List[List[Card]] = [[], []]
         self.game_state = GameState(hands, fields, deck, [], logger=self.logger)
 
     def display_available_cards(self, available_cards: Dict[str, Card]) -> None:
@@ -262,8 +267,13 @@ class Game:
         cards = []
         for suit in Suit.__members__.values():
             for rank in Rank.__members__.values():
-                id = uuid.uuid4()
-                cards.append(Card(id, suit, rank))
+                cards.append(
+                    Card(
+                        str(uuid.uuid4()),
+                        suit=suit,
+                        rank=rank,
+                    )
+                )
         return cards
 
     def generate_shuffled_deck(self) -> List[Card]:
@@ -303,5 +313,12 @@ class Game:
             - remaining cards form the deck
         """
         hands = self.deal_cards(test_deck)
-        fields = [[], []]
-        self.game_state = GameState(hands, fields, test_deck[11:], [])
+        fields: List[List[Card]] = [[], []]
+        self.game_state = GameState(
+            hands,
+            fields,
+            test_deck[11:],
+            [],
+            logger=self.logger,
+            ai_player=self.ai_player,
+        )

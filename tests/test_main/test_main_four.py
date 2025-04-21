@@ -1,6 +1,9 @@
-from unittest.mock import patch
+from typing import Any, List
+from unittest.mock import Mock, patch
+
 import pytest
-from game.card import Card, Suit, Rank, Purpose
+
+from game.card import Card, Rank, Suit
 from tests.test_main.test_main_base import MainTestBase, print_and_capture
 
 
@@ -10,8 +13,8 @@ class TestMainFour(MainTestBase):
     @patch("builtins.print")
     @patch("game.game.Game.generate_all_cards")
     async def test_play_four_through_main(
-        self, mock_generate_cards, mock_print, mock_input
-    ):
+        self, mock_generate_cards: Mock, mock_print: Mock, mock_input: Mock
+    ) -> None:
         """Test playing a Four as a one-off through main.py to force opponent to discard."""
         # Set up print mock to both capture and display
         mock_print.side_effect = print_and_capture
@@ -69,7 +72,7 @@ class TestMainFour(MainTestBase):
         await main()
 
         # Get all logged output
-        log_output = self.get_log_output()
+        log_output: str = self.get_logger_output(mock_print)
         self.print_game_output(log_output)
 
         # Verify Four was played
@@ -109,8 +112,8 @@ class TestMainFour(MainTestBase):
     @patch("builtins.print")
     @patch("game.game.Game.generate_all_cards")
     async def test_play_four_with_counter_through_main(
-        self, mock_generate_cards, mock_print, mock_input
-    ):
+        self, mock_generate_cards: Mock, mock_print: Mock, mock_input: Mock
+    ) -> None:
         """Test playing a Four that gets countered by a Two."""
         # Set up print mock to both capture and display
         mock_print.side_effect = print_and_capture
@@ -167,7 +170,7 @@ class TestMainFour(MainTestBase):
         await main()
 
         # Get all logged output
-        log_output = self.get_log_output()
+        log_output: str = self.get_logger_output(mock_print)
         self.print_game_output(log_output)
 
         # Verify Four was played
@@ -200,8 +203,8 @@ class TestMainFour(MainTestBase):
     @patch("builtins.print")
     @patch("game.game.Game.generate_all_cards")
     async def test_play_four_with_one_card_opponent_through_main(
-        self, mock_generate_cards, mock_print, mock_input
-    ):
+        self, mock_generate_cards: Mock, mock_print: Mock, mock_input: Mock
+    ) -> None:
         """Test playing a Four when opponent only has one card to discard."""
         # Set up print mock to both capture and display
         mock_print.side_effect = print_and_capture
@@ -244,7 +247,7 @@ class TestMainFour(MainTestBase):
             "Resolve",  # p0 resolves
             "0",  # p0 discards first card
             "0",  # p0 discards second card
-            "Three of Clubs as points", 
+            "Three of Clubs as points",
             "Four of Hearts as one-off",  # p1 Play Four of Hearts (one-off)
             "Resolve",  # p0 resolves (doesn't counter)
             "0",  # p0 discards only card
@@ -259,7 +262,7 @@ class TestMainFour(MainTestBase):
         await main()
 
         # Get all logged output
-        log_output = self.get_log_output()
+        log_output: str = self.get_logger_output(mock_print)
         self.print_game_output(log_output)
 
         # Verify Four was played
@@ -289,8 +292,8 @@ class TestMainFour(MainTestBase):
     @patch("builtins.print")
     @patch("game.game.Game.generate_all_cards")
     async def test_play_four_with_empty_opponent_hand_through_main(
-        self, mock_generate_cards, mock_print, mock_input
-    ):
+        self, mock_generate_cards: Mock, mock_print: Mock, mock_input: Mock
+    ) -> None:
         """Test playing a Four as a one-off when opponent has no cards in hand."""
         # Set up print mock to both capture and display
         mock_print.side_effect = print_and_capture
@@ -335,17 +338,17 @@ class TestMainFour(MainTestBase):
             # Game actions
             # First, make Player 1 play all their cards as points to empty their hand
             "Four of Diamonds as one-off",  # p0 plays 4 of Diamonds as points
-            "Resolve", # p1 resolves
+            "Resolve",  # p1 resolves
             "0",  # p1 discards first card
             "0",  # p1 discards second card
-            "Seven of Hearts as points",   # p1 plays 7 of Hearts as points
+            "Seven of Hearts as points",  # p1 plays 7 of Hearts as points
             "Four of Hearts as one-off",  # p0 plays 4 of Hearts as one-off
-            "Resolve", # p1 resolves
+            "Resolve",  # p1 resolves
             "0",  # p1 discards first card
             "0",  # p1 discards second card
-            "Three of Clubs as points",    # p1 plays 3 of Clubs as points
+            "Three of Clubs as points",  # p1 plays 3 of Clubs as points
             "Four of Clubs as one-off",  # p0 plays 4 of Clubs as one-off
-            "Resolve", # p1 resolves
+            "Resolve",  # p1 resolves
             # p1 has no cards to discard
             "end game",  # End game
             "n",  # Don't save final game state
@@ -358,7 +361,7 @@ class TestMainFour(MainTestBase):
         await main()
 
         # Get all logged output
-        log_output = self.get_log_output()
+        log_output: str = self.get_logger_output(mock_print)
         self.print_game_output(log_output)
 
         # Verify all 3 Four cards were played
@@ -371,7 +374,8 @@ class TestMainFour(MainTestBase):
 
         # Verify opponent had no cards to discard
         no_cards_message = [
-            text for text in log_output 
+            text
+            for text in log_output
             if "has no cards to discard" in text or "cannot discard any cards" in text
         ]
         self.assertTrue(any(no_cards_message))

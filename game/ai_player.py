@@ -7,13 +7,16 @@ implements strategies, and makes decisions based on the current game state.
 """
 
 from __future__ import annotations
-from game.utils import log_print
-import ollama
-from typing import List
+
 import time
+from typing import List
+
+import ollama
+
 from game.action import Action
-from game.game_state import GameState
 from game.card import Card, Purpose
+from game.game_state import GameState
+from game.utils import log_print
 
 
 class AIPlayer:
@@ -81,7 +84,7 @@ Mistakes to avoid:
 The Strategy is key to winning the game.
     """
 
-    def __init__(self):
+    def __init__(self, retry_delay: int = 1, max_retries: int = 3) -> None:
         """Initialize the AI player.
 
         Sets up:
@@ -90,13 +93,13 @@ The Strategy is key to winning the game.
         - Verifies AI's understanding of game rules
         """
         self.model = "gemma3:4b"  # Default to mistral model
-        self.max_retries = 3
-        self.retry_delay = 1  # seconds
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay  # seconds
 
         # Initialize system context and verify AI understanding
         self._verify_ai_understanding()
 
-    def _verify_ai_understanding(self):
+    def _verify_ai_understanding(self) -> None:
         """Verify that the AI understands the game rules and strategies.
 
         This method sends a test prompt to the LLM to confirm it understands
@@ -144,11 +147,12 @@ Keep your response concise."""
         Returns:
             str: Formatted prompt string for the LLM.
         """
-        opponent_point_cards = [
-            card for card in game_state.fields[0] if card.purpose == Purpose.POINTS
-        ]
+        opponent = 0
+        opponent_point_cards = game_state.player_point_cards(opponent)
         opponent_face_cards = [
-            card for card in game_state.fields[0] if card.purpose == Purpose.FACE_CARD
+            card
+            for card in game_state.fields[0]
+            if card.purpose == Purpose.FACE_CARD
         ]
 
         legal_actions_str = "\n".join(
@@ -157,15 +161,15 @@ Keep your response concise."""
 
         prompt = f"""
 Current Game State:
-AI 
-{'AI Hand: ' + str(game_state.hands[1]) if not is_human_view else 'AI Hand: [Hidden]'}
-AI Field: {game_state.fields[1]}
+AI
+{"AI Hand: " + str(game_state.hands[1]) if not is_human_view else "AI Hand: [Hidden]"}
+AI Field: {game_state.get_player_field(1)}
 AI Score: {game_state.get_player_score(1)}
 AI Target: {game_state.get_player_target(1)}
 
 Opponent
 Opponent's Hand Size: {len(game_state.hands[0])}
-Opponent's Field: {game_state.fields[0]}
+Opponent's Field: {game_state.get_player_field(0)}
 Opponent's Point Cards: {opponent_point_cards}
 Opponent's Face Cards: {opponent_face_cards}
 Opponent's Score: {game_state.get_player_score(0)}
@@ -220,7 +224,7 @@ Make your choice now:
         if not legal_actions:
             raise ValueError("No legal actions available")
 
-        # Format the game state and actions into a prompt
+        # Format the game state and actions into a prompt using the moved method
         prompt = self._format_game_state(game_state, legal_actions)
         retries = 0
         last_error = None
@@ -237,43 +241,56 @@ Make your choice now:
                 )
 
                 # Extract the action number from the response
-                log_print(response)
-                response_text = response.message.content
-                log_print(response_text)
+                response_text = "" # Default to empty string
+                if isinstance(response, dict):
+                    # Handle real response (dictionary)
+                    if 'message' in response and 'content' in response['message']:
+                        response_text = response['message']['content']
+                elif hasattr(response, 'message') and hasattr(response.message, 'content'):
+                    # Handle MagicMock response (attribute access)
+                    response_text = response.message.content
+                else:
+                    print(f"Warning: Unexpected response structure: {type(response)}")
+                    # Fallback or raise error if needed, for now rely on parsing logic below to handle empty/bad string
+
+                # log_print(f"AI Response Content: {response_text}") # Use standard print for debugging
+                print(f"AI Response Content: {response_text}")
                 # Look for "Choice: [number]" pattern first
                 import re
 
-                choice_match = re.search(r"Choice:\s*(\d+)", response_text)
-                if choice_match:
-                    action_idx = int(choice_match.group(1))
-                else:
-                    # Fallback to finding any number in the response
-                    numbers = re.findall(r"\d+", response_text)
-                    if not numbers:
-                        raise ValueError("No action number found in response")
-                    action_idx = int(numbers[-1])
+                if response_text is not None:
+                    choice_match = re.search(r"Choice:\s*(\d+)", response_text)
+                    if choice_match:
+                        action_index = int(choice_match.group(1))
+                        if 0 <= action_index < len(legal_actions):
+                            return legal_actions[action_index]
 
-                # Validate the action index
-                if action_idx < 0 or action_idx >= len(legal_actions):
-                    raise ValueError(f"Invalid action index: {action_idx}")
+                    # Fallback: Find any number in the response
+                    all_numbers = re.findall(r"\d+", response_text)
+                    if all_numbers:
+                        action_index = int(all_numbers[-1])  # Assume last number is choice
+                        if 0 <= action_index < len(legal_actions):
+                            return legal_actions[action_index]
 
-                return legal_actions[action_idx]
+                # If extraction fails, log error and increment retries
+                log_print(
+                    f"Error: Could not extract action number from response: {response_text}"
+                )
+                last_error = f"Failed to extract action number from response: {response_text}"
+                retries += 1
+                time.sleep(self.retry_delay)
 
             except Exception as e:
-                last_error = e
-                print(
-                    f"Error getting AI action (attempt {retries + 1}/{self.max_retries}): {e}"
-                )
+                log_print(f"Error during AI action selection: {e}")
+                last_error = str(e)  # Store the error message
                 retries += 1
-                if retries < self.max_retries:
-                    time.sleep(self.retry_delay)
-                continue
+                time.sleep(self.retry_delay)
 
-        print(f"All retries failed. Using first legal action. Last error: {last_error}")
+        print(f"AI failed to choose an action after {self.max_retries} retries. Error: {last_error}")
         return legal_actions[0]
 
-    def set_model(self, model: str):
-        """Set the model to use for AI decisions."""
+    def set_model(self, model: str) -> None:
+        """Set the language model used by the AI player."""
         self.model = model
 
     def choose_card_from_discard(self, discard_pile: List[Card]) -> Card:
@@ -314,40 +331,40 @@ Make your choice now:
                     ],
                 )
 
-                # Extract the action number from the response
+                # Extract the chosen card index from the response
                 response_text = response.message.content
-                print("AI response:", response_text)
-
-                # Look for "Choice: [number]" pattern first
+                log_print(f"AI Response (Choose Card): {response_text}")
                 import re
 
-                choice_match = re.search(r"Choice:\s*(\d+)", response_text)
-                if choice_match:
-                    card_idx = int(choice_match.group(1))
-                else:
-                    # Fallback to finding any number in the response
-                    numbers = re.findall(r"\d+", response_text)
-                    if not numbers:
-                        raise ValueError("No card index found in response")
-                    card_idx = int(numbers[-1])
+                if response_text is not None:
+                    choice_match = re.search(r"Choice:\s*(\d+)", response_text)
+                    if choice_match:
+                        card_index = int(choice_match.group(1))
+                        if 0 <= card_index < len(discard_pile):
+                            return discard_pile[card_index]
 
-                # Validate the card index
-                if card_idx < 0 or card_idx >= len(discard_pile):
-                    raise ValueError(f"Invalid card index: {card_idx}")
-
-                return discard_pile[card_idx]
+                    # Fallback: Find any number in the response
+                    all_numbers = re.findall(r"\d+", response_text)
+                    if all_numbers:
+                        card_index = int(all_numbers[-1])
+                        if 0 <= card_index < len(discard_pile):
+                            return discard_pile[card_index]
+                log_print(
+                    f"Error: Could not extract card choice from response: {response_text}"
+                )
+                last_error = f"Failed to extract card choice from response: {response_text}"
+                retries += 1
+                time.sleep(self.retry_delay)
 
             except Exception as e:
-                last_error = e
-                print(
-                    f"Error choosing card from discard (attempt {retries + 1}/{self.max_retries}): {e}"
-                )
+                log_print(f"Error during AI card choice (discard): {e}")
+                last_error = str(e)
                 retries += 1
-                if retries < self.max_retries:
-                    time.sleep(self.retry_delay)
-                continue
+                time.sleep(self.retry_delay)
 
-        print(f"All retries failed. Using first card from discard pile. Last error: {last_error}")
+        log_print(
+            f"All retries failed. Using first card from discard pile. Last error: {last_error}"
+        )
         return discard_pile[0]
 
     def choose_two_cards_from_hand(self, hand: List[Card]) -> List[Card]:
@@ -393,40 +410,42 @@ Make your choice now:
 
                 # Extract the card indices from the response
                 response_text = response.message.content
-                print("AI response:", response_text)
-
-                # Look for "Choice: [number1, number2]" pattern first
+                log_print(f"AI Response (Choose Two Cards): {response_text}")
                 import re
-                choice_match = re.search(r"Choice:\s*\[([\d,\s]+)\]", response_text)
-                if choice_match:
-                    indices_str = choice_match.group(1)
-                    card_indices = [int(idx.strip()) for idx in indices_str.split(',') if idx.strip()]
-                else:
-                    # Fallback to finding any numbers in the response
-                    numbers = re.findall(r"\d+", response_text)
-                    if not numbers:
-                        raise ValueError("No card indices found in response")
-                    # Take up to 2 numbers from the response
-                    card_indices = [int(num) for num in numbers[:2]]
 
-                # Validate the card indices
-                valid_indices = [idx for idx in card_indices if 0 <= idx < len(hand)]
-                if not valid_indices:
-                    raise ValueError(f"No valid card indices found: {card_indices}")
+                if response_text is not None:
+                    choice_match = re.search(
+                        r"Choice:\s*(\d+),\s*(\d+)", response_text
+                    )
+                    if choice_match:
+                        indices = [int(choice_match.group(1)), int(choice_match.group(2))]
+                        if all(0 <= i < len(hand) for i in indices) and len(set(indices)) == 2:
+                            return [hand[i] for i in indices]
 
-                # Return up to 2 cards
-                return [hand[idx] for idx in valid_indices[:2]]
+                    # Fallback: Find all numbers and take the last two distinct ones
+                    all_numbers = re.findall(r"\d+", response_text)
+                    valid_indices = [
+                        int(n) for n in all_numbers if 0 <= int(n) < len(hand)
+                    ]
+                    # Get unique indices while preserving order (last occurrence)
+                    unique_indices = list(dict.fromkeys(valid_indices[::-1]))[::-1]
+                    if len(unique_indices) >= 2:
+                        chosen_indices = unique_indices[-2:]
+                        return [hand[i] for i in chosen_indices]
+
+                log_print(
+                    f"Error: Could not extract two card choices from response: {response_text}"
+                )
+                last_error = f"Failed to extract two card choices from response: {response_text}"
 
             except Exception as e:
-                last_error = e
-                print(
-                    f"Error choosing cards from hand (attempt {retries + 1}/{self.max_retries}): {e}"
-                )
+                log_print(f"Error during AI card choice (hand): {e}")
+                last_error = str(e)
                 retries += 1
-                if retries < self.max_retries:
-                    time.sleep(self.retry_delay)
-                continue
+                time.sleep(self.retry_delay)
 
-        print(f"All retries failed. Using first two cards from hand. Last error: {last_error}")
+        log_print(
+            f"All retries failed. Using first two cards from hand. Last error: {last_error}"
+        )
         # Return up to 2 cards from the hand
-        return hand[:min(2, len(hand))]
+        return hand[: min(2, len(hand))]
