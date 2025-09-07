@@ -13,6 +13,7 @@ from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple,
 
 from game.action import Action, ActionType
 from game.card import Card, Purpose, Rank
+from game.game_history import GameHistory
 from game.utils import log_print
 
 # Import AIPlayer only for type checking to avoid circular import
@@ -49,6 +50,7 @@ class GameState:
         use_ai (bool): Whether AI player is enabled.
         ai_player: The AI player instance if enabled.
         overall_turn (int): The total number of turns played.
+        game_history (GameHistory): Chronological record of all game actions.
     """
 
     use_ai: bool
@@ -96,6 +98,7 @@ class GameState:
         self.ai_player = ai_player
         self.overall_turn = 0
         self.last_action_played_by = None
+        self.game_history = GameHistory()
 
     def next_turn(self) -> None:
         """Advance to the next player's turn.
@@ -104,11 +107,13 @@ class GameState:
         1. Updates the turn counter
         2. Updates the current action player
         3. Increments the overall turn counter if returning to player 0
+        4. Increments the game history turn counter
         """
         self.turn = (self.turn + 1) % len(self.hands)
         self.current_action_player = self.turn
         if self.turn == 0:
             self.overall_turn += 1
+        self.game_history.increment_turn()
 
     def next_player(self) -> None:
         """Move to the next player in the action sequence.
@@ -257,6 +262,39 @@ class GameState:
         """
         return self.deck == [] and not self.winner()
 
+    def _record_action_to_history(self, action: Action) -> None:
+        """Convert an Action to a GameHistoryEntry and record it in game history.
+        
+        Args:
+            action (Action): The action to record in the game history.
+        """
+        # Determine source and destination based on action type
+        source = ""
+        destination = ""
+        
+        if action.action_type == ActionType.DRAW:
+            source = "deck"
+            destination = "hand"
+        elif action.action_type in [ActionType.POINTS, ActionType.FACE_CARD]:
+            source = "hand"
+            destination = "field"
+        elif action.action_type in [ActionType.ONE_OFF, ActionType.SCUTTLE]:
+            source = "hand"
+            destination = "discard_pile"
+        elif action.action_type == ActionType.COUNTER:
+            source = "hand"
+            destination = "discard_pile"
+        
+        # Record the action in game history
+        self.game_history.record_action(
+            player=action.played_by,
+            action_type=action.action_type,
+            card=action.card,
+            target=action.target,
+            source=source,
+            destination=destination,
+        )
+
     def update_state(self, action: Action) -> Tuple[bool, bool, Optional[int]]:
         """Update the game state based on an action.
 
@@ -277,6 +315,9 @@ class GameState:
                 - bool: Whether the game should stop
                 - Optional[int]: The winner's index if game is over, None otherwise
         """
+        # Record the action in game history first
+        self._record_action_to_history(action)
+        
         turn_finished = False
         should_stop = False
         winner = None
@@ -403,7 +444,17 @@ class GameState:
             raise Exception("Player has 8 cards, cannot draw")
         # draw a card from the deck
         for _ in range(count):
-            self.hands[self.turn].append(self.deck.pop())
+            card = self.deck.pop()
+            self.hands[self.turn].append(card)
+            # Record each individual card draw (for multi-card draws like 5s)
+            if count > 1:
+                self.game_history.record_action(
+                    player=self.turn,
+                    action_type=ActionType.DRAW,
+                    card=card,
+                    source="deck",
+                    destination="hand",
+                )
 
     def play_points(self, card: Card) -> bool:
         # play a points card
@@ -962,6 +1013,7 @@ class GameState:
             else None,
             "use_ai": self.use_ai,
             "overall_turn": self.overall_turn,
+            "game_history": self.game_history.to_dict(),
         }
     
     @classmethod
@@ -1008,5 +1060,12 @@ class GameState:
         )
         state.ai_player = None  # Placeholder, actual instance set by Game
         state.overall_turn = data.get("overall_turn", 0)
+        
+        # Load game history if present, otherwise create new empty history
+        history_data = data.get("game_history")
+        if history_data:
+            state.game_history = GameHistory.from_dict(history_data)
+        else:
+            state.game_history = GameHistory()
 
         return state
