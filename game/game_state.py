@@ -330,6 +330,11 @@ class GameState:
                 action.card.purpose = Purpose.COUNTER
                 if action.card.played_by is not None: # Check played_by before use
                     self.current_action_player = action.card.played_by
+                else:
+                    self.current_action_player = action.played_by
+                    action.card.played_by = action.played_by
+                    log_print(f"Counter card {action.card} has no played_by")
+
                 turn_finished, played_by = self.play_one_off(
                     player=self.turn,
                     card=action.target, # Target is the card being countered
@@ -493,6 +498,7 @@ class GameState:
                     f"Counter must be with a purpose of counter, instead got {countered_with.purpose}"
                 )
             counter_player = countered_with.played_by
+            log_print(f"Checking queen on opponent's field for counter card {countered_with}")
             if counter_player is not None:
                 other_player = (counter_player + 1) % len(self.hands)
                 # check if other player has a queen on their field
@@ -506,11 +512,13 @@ class GameState:
                     )
 
             # Move counter card to discard pile
+            log_print(f"Moving counter card {countered_with} to discard pile")
             played_by = countered_with.played_by
             if played_by is not None and countered_with in self.hands[played_by]:
                 self.hands[played_by].remove(countered_with)
                 self.discard_pile.append(countered_with)
                 countered_with.clear_player_info()
+                log_print(f"Counter card {countered_with} moved to discard pile")
 
             # Move the countered card to discard pile if it's still in hand
             if card in self.hands[self.turn]:

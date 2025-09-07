@@ -242,6 +242,14 @@ class TestMainAce(MainTestBase):
             if "Player 0's field: [Ten of Hearts, Five of Diamonds]" in text
             or "Player 1's field: [Nine of Diamonds, Seven of Hearts]" in text
         ]
+        # Two of Clubs should be in discard pile
+        two_of_clubs_discarded = [
+            text
+            for text in log_output
+            if "Moving counter card Two of Clubs to discard pile" in text
+            and "Counter card Two of Clubs moved to discard pile" in text
+        ]
+        self.assertTrue(any(two_of_clubs_discarded))
         # Get the last occurrence of each empty field
         p0_empty_indices = [
             i
