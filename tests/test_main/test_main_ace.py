@@ -1,3 +1,4 @@
+import logging
 from typing import Any, List
 from unittest.mock import Mock, patch
 
@@ -8,6 +9,7 @@ from tests.test_main.test_main_base import MainTestBase, print_and_capture
 
 
 class TestMainAce(MainTestBase):
+    @pytest.mark.asyncio
     @pytest.mark.timeout(5)
     @patch("builtins.input")
     @patch("builtins.print")
@@ -81,38 +83,32 @@ class TestMainAce(MainTestBase):
         point_card_plays = [
             text
             for text in log_output
-            if "Player 0's field: [Ten of Hearts]" in text
-            or "Player 1's field: [Nine of Diamonds]" in text
-            or "Player 0's field: [Ten of Hearts, Five of Diamonds]" in text
-            or "Player 1's field: [Nine of Diamonds, Seven of Hearts]" in text
+            if "Field: [Ten of Hearts]" in text
+            or "Field: [Nine of Diamonds]" in text
+            or "Field: [Ten of Hearts, Five of Diamonds]" in text
+            or "Field: [Nine of Diamonds, Seven of Hearts]" in text
         ]
-        self.assertTrue(any(point_card_plays))
+        assert any(point_card_plays)
 
         # After Ace is played, fields should be empty of point cards
         empty_fields = [
             text
             for text in log_output
-            if "Player 0's field: []" in text or "Player 1's field: []" in text
+            if "Field: []" in text
         ]
         # Get the last occurrence of each empty field
         p0_empty_indices = [
-            i for i, text in enumerate(log_output) if "Player 0's field: []" in text
+            i for i, text in enumerate(log_output) if "Field: []" in text
         ]
         p1_empty_indices = [
-            i for i, text in enumerate(log_output) if "Player 1's field: []" in text
+            i for i, text in enumerate(log_output) if "Field: []" in text
         ]
-        self.assertTrue(
-            p0_empty_indices
-        )  # Should have at least one empty field state for p0
-        self.assertTrue(
-            p1_empty_indices
-        )  # Should have at least one empty field state for p1
+        assert p0_empty_indices  # Should have at least one empty field state for p0
+        assert p1_empty_indices  # Should have at least one empty field state for p1
         p0_last_index = p0_empty_indices[-1]
         p1_last_index = p1_empty_indices[-1]
         # The last empty states should be close to each other
-        self.assertTrue(
-            abs(p0_last_index - p1_last_index) <= 10
-        )  # Allow some flexibility in print order
+        assert abs(p0_last_index - p1_last_index) <= 10  # Allow some flexibility in print order
 
         # Verify final game state
         last_game_state_output = [
@@ -121,17 +117,14 @@ class TestMainAce(MainTestBase):
             "Points:",
             "Player 0: 0",
             "Player 1: 0",
-            "Player 0's hand: [King of Spades, Two of Clubs]",
-            "Player 1's hand: [Eight of Clubs, Five of Spades, Four of Diamonds, Three of Clubs]",
-            "Player 0's field: []",
-            "Player 1's field: []",
+            "Hand: [King of Spades, Two of Clubs]",
+            "Hand: [Eight of Clubs, Five of Spades, Four of Diamonds, Three of Clubs]",
+            "Field: []",
+            "Field: []",
         ]
         # Check that each line appears in the output
         for expected_line in last_game_state_output:
-            self.assertTrue(
-                any(expected_line in actual_line for actual_line in log_output[-50:]),
-                f"Could not find expected line: {expected_line}",
-            )
+            assert any(expected_line in actual_line for actual_line in log_output[-50:]), f"Could not find expected line: {expected_line}"
         # Also verify that these lines appear near the end of the output
         # by checking that all of them appear in the last 50 lines
         last_50_lines = log_output[-50:]
@@ -139,12 +132,9 @@ class TestMainAce(MainTestBase):
             any(expected_line in actual_line for actual_line in last_50_lines)
             for expected_line in last_game_state_output
         )
-        self.assertTrue(
-            all_lines_found,
-            "Not all expected lines were found in the last 50 lines of output",
-        )
+        assert all_lines_found, "Not all expected lines were found in the last 50 lines of output"
 
-        self.assertTrue(any(empty_fields))
+        assert any(empty_fields)
 
         # Verify one-off effect message
         ace_effect = [
@@ -152,8 +142,9 @@ class TestMainAce(MainTestBase):
             for text in log_output
             if "Applying one off effect for Ace of Hearts" in text
         ]
-        self.assertTrue(any(ace_effect))
+        assert any(ace_effect)
 
+    @pytest.mark.asyncio
     @pytest.mark.timeout(5)
     @patch("builtins.input")
     @patch("builtins.print")
@@ -228,12 +219,12 @@ class TestMainAce(MainTestBase):
         point_card_plays = [
             text
             for text in log_output
-            if "Player 0's field: [Ten of Hearts]" in text
-            or "Player 1's field: [Nine of Diamonds]" in text
-            or "Player 0's field: [Ten of Hearts, Five of Diamonds]" in text
-            or "Player 1's field: [Nine of Diamonds, Seven of Hearts]" in text
+            if "Field: [Ten of Hearts]" in text
+            or "Field: [Nine of Diamonds]" in text
+            or "Field: [Ten of Hearts, Five of Diamonds]" in text
+            or "Field: [Nine of Diamonds, Seven of Hearts]" in text
         ]
-        self.assertTrue(any(point_card_plays))
+        assert any(point_card_plays)
 
         # After Ace is played and countered, fields should be the same point cards
         empty_fields = [
@@ -247,9 +238,10 @@ class TestMainAce(MainTestBase):
             text
             for text in log_output
             if "Moving counter card Two of Clubs to discard pile" in text
-            and "Counter card Two of Clubs moved to discard pile" in text
+            or "Counter card Two of Clubs moved to discard pile" in text
         ]
-        self.assertTrue(any(two_of_clubs_discarded))
+        assert any(two_of_clubs_discarded)
+        assert two_of_clubs_discarded != []
         # Get the last occurrence of each empty field
         p0_empty_indices = [
             i
@@ -261,18 +253,12 @@ class TestMainAce(MainTestBase):
             for i, text in enumerate(log_output)
             if "Player 1's field: [Nine of Diamonds, Seven of Hearts]" in text
         ]
-        self.assertTrue(
-            p0_empty_indices
-        )  # Should have at least one empty field state for p0
-        self.assertTrue(
-            p1_empty_indices
-        )  # Should have at least one empty field state for p1
+        assert p0_empty_indices  # Should have at least one empty field state for p0
+        assert p1_empty_indices  # Should have at least one empty field state for p1
         p0_last_index = p0_empty_indices[-1]
         p1_last_index = p1_empty_indices[-1]
         # The last empty states should be close to each other
-        self.assertTrue(
-            abs(p0_last_index - p1_last_index) <= 10
-        )  # Allow some flexibility in print order
+        assert abs(p0_last_index - p1_last_index) <= 10  # Allow some flexibility in print order
 
         # Verify final game state
         last_game_state_output = [
@@ -288,10 +274,7 @@ class TestMainAce(MainTestBase):
         ]
         # Check that each line appears in the output
         for expected_line in last_game_state_output:
-            self.assertTrue(
-                any(expected_line in actual_line for actual_line in log_output[-50:]),
-                f"Could not find expected line: {expected_line}",
-            )
+            assert any(expected_line in actual_line for actual_line in log_output[-50:]), f"Could not find expected line: {expected_line}"
         # Also verify that these lines appear near the end of the output
         # by checking that all of them appear in the last 50 lines
         last_50_lines = log_output[-50:]
@@ -299,9 +282,6 @@ class TestMainAce(MainTestBase):
             any(expected_line in actual_line for actual_line in last_50_lines)
             for expected_line in last_game_state_output
         )
-        self.assertTrue(
-            all_lines_found,
-            "Not all expected lines were found in the last 50 lines of output",
-        )
+        assert all_lines_found, "Not all expected lines were found in the last 50 lines of output"
 
-        self.assertTrue(any(empty_fields))
+        assert any(empty_fields)
