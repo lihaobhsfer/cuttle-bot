@@ -179,6 +179,8 @@ Remember, your primary goal is to deliver high-quality, maintainable Python code
 
 ## Test Commands
 - Run ace tests: `PYTHONPATH=. pytest tests/test_main/test_main_ace.py`
+  - change file path to run test for other individual modules
+- run `make test` to run the entire test suite. you can also output the test output in `tmp.txt`
 
 # Current Project Status (as of 2025-09-07)
 
