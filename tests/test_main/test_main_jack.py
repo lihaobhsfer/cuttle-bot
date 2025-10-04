@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any, List
 from unittest.mock import MagicMock, Mock, patch
 
@@ -11,39 +12,12 @@ from tests.test_main.test_main_base import MainTestBase, print_and_capture
 
 
 class TestMainJack(MainTestBase):
-    def generate_test_deck(self, p0_cards: List[Card], p1_cards: List[Card], num_filler: int = 41) -> List[Card]:
-        """Generate a test deck with specific cards for each player, overriding base but keeping functionality simple for these tests."""
-        # Simple implementation: just combine hands and add some basic fillers if needed
-        deck = list(p0_cards) + list(p1_cards)
-        existing_ids = {c.id for c in deck}
 
-        # Add minimal fillers if deck is too small (less than 11 needed for initial deal)
-        needed_fillers = max(0, 11 - len(deck))
-        filler_id = 100 # Start filler IDs high to avoid collision
-        suit_cycle = list(Suit)
-        rank_cycle = [r for r in Rank if r not in (Rank.JACK, Rank.KING, Rank.QUEEN)] # Avoid special ranks initially
-
-        fill_count = 0
-        while fill_count < needed_fillers:
-            suit = suit_cycle[filler_id % len(suit_cycle)]
-            rank = rank_cycle[filler_id % len(rank_cycle)]
-            filler_card = Card(str(filler_id), suit, rank)
-            if filler_card.id not in existing_ids:
-                deck.append(filler_card)
-                existing_ids.add(filler_card.id)
-                fill_count += 1
-            filler_id += 1
-            if filler_id > 1000: # Safety break
-                 break
-        # The rest of the deck isn't critical for these tests, as long as dealing works
-        return deck
-
-    @pytest.mark.asyncio
     @pytest.mark.timeout(5)
     @patch("builtins.input")
     @patch("builtins.print")
     @patch("game.game.Game.generate_all_cards")
-    async def test_play_jack_on_opponent_point_card(
+    def test_play_jack_on_opponent_point_card(
         self, mock_generate_cards: Mock, mock_print: Mock, mock_input: Mock
     ) -> None:
         """Test playing a Jack on an opponent's point card through main.py."""
@@ -71,6 +45,7 @@ class TestMainJack(MainTestBase):
 
         # Mock sequence of inputs for the entire game
         mock_inputs = [
+            "n",  # Don't use AI
             "n",  # Don't load saved game
             "y",  # Use manual selection
             # Player 0 selects cards (indices)
@@ -89,8 +64,8 @@ class TestMainJack(MainTestBase):
             "n",  # Don't save initial state
             # Game actions (indices)
             "1",  # P0: Play 6S points
-            "1",  # P1: Play 8C points (Changed from original test which failed)
-            "4",  # P0: Play JH on 8C
+            "Eight of Clubs as points",  # P1: Play 8C points (Changed from original test which failed)
+            "Jack of Hearts as jack on Eight of Clubs",  # P0: Play JH on 8C
             "e",  # end game
             "n",  # Don't save game history
         ]
@@ -112,7 +87,7 @@ class TestMainJack(MainTestBase):
         try:
             # Run the game
             from main import main
-            await main()
+            asyncio.run(main())
         finally:
             # Restore original
             Game.__init__ = original_init
@@ -125,7 +100,7 @@ class TestMainJack(MainTestBase):
         
         # Verify Jack was played
         jack_actions = history.get_actions_by_type(ActionType.JACK)
-        assert len(jack_actions) == 1, "Expected exactly one Jack action"
+        assert len(jack_actions) == 1, "Expected exactly one Jack action, got " + str(len(jack_actions))
         jack_action = jack_actions[0]
         assert jack_action.card.rank == Rank.JACK, "Expected Jack to be played"
         assert jack_action.card.suit == Suit.HEARTS, "Expected Jack of Hearts to be played"
@@ -137,7 +112,7 @@ class TestMainJack(MainTestBase):
         assert jack_action.target.suit == Suit.CLUBS, "Jack should target Eight of Clubs"
         
         # Verify final game state - Player 0 should have the stolen card
-        p0_field = captured_game.game_state.fields[0]
+        p0_field = captured_game.game_state.get_player_field(0)
         stolen_cards = [card for card in p0_field if card.rank == Rank.EIGHT and card.suit == Suit.CLUBS]
         assert len(stolen_cards) == 1, "Player 0 should have stolen Eight of Clubs"
         
@@ -146,12 +121,11 @@ class TestMainJack(MainTestBase):
         jacks_on_card = [attachment for attachment in stolen_card.attachments if attachment.rank == Rank.JACK]
         assert len(jacks_on_card) == 1, "Should have one Jack attached to stolen card"
 
-    @pytest.mark.asyncio
     @pytest.mark.timeout(5)
     @patch("builtins.input")
     @patch("builtins.print")
     @patch("game.game.Game.generate_all_cards")
-    async def test_cannot_play_jack_with_queen_on_field(
+    def test_cannot_play_jack_with_queen_on_field(
         self, mock_generate_cards: Mock, mock_print: Mock, mock_input: Mock
     ) -> None:
         """Test that a Jack cannot be played if the opponent has a Queen on their field."""
@@ -179,6 +153,7 @@ class TestMainJack(MainTestBase):
 
         # Mock sequence of inputs for the entire game
         mock_inputs = [
+            "n",  # Don't use AI
             "n",  # Don't load saved game
             "y",  # Use manual selection
             # Player 0 selects cards (indices)
@@ -223,7 +198,7 @@ class TestMainJack(MainTestBase):
         try:
             # Run the game
             from main import main
-            await main()
+            asyncio.run(main())
         finally:
             # Restore original
             Game.__init__ = original_init
@@ -238,7 +213,7 @@ class TestMainJack(MainTestBase):
         face_card_actions = history.get_actions_by_type(ActionType.FACE_CARD)
         queen_actions = [action for action in face_card_actions 
                         if action.card and action.card.rank == Rank.QUEEN]
-        assert len(queen_actions) == 1, "Expected exactly one Queen face card action"
+        assert len(queen_actions) == 1, "Expected exactly one Queen face card action, got " + str(len(queen_actions))
         queen_action = queen_actions[0]
         assert queen_action.card.suit == Suit.CLUBS, "Expected Queen of Clubs to be played"
         assert queen_action.player == 1, "Expected player 1 to play the Queen"
@@ -257,12 +232,11 @@ class TestMainJack(MainTestBase):
         jacks_in_hand = [card for card in p0_hand if card.rank == Rank.JACK]
         assert len(jacks_in_hand) >= 1, "Player 0 should still have Jack in hand"
 
-    @pytest.mark.asyncio
     @pytest.mark.timeout(5)
     @patch("builtins.input")
     @patch("builtins.print")
     @patch("game.game.Game.generate_all_cards")
-    async def test_multiple_jacks_on_same_card(self, mock_generate_cards: Mock, mock_print: Mock, mock_input: Mock) -> None:
+    def test_multiple_jacks_on_same_card(self, mock_generate_cards: Mock, mock_print: Mock, mock_input: Mock) -> None:
         """Test that multiple jacks can be played on the same card."""
         # Set up print mock to both capture and display
         mock_print.side_effect = print_and_capture
@@ -288,6 +262,7 @@ class TestMainJack(MainTestBase):
 
         # Mock sequence of inputs for the entire game
         mock_inputs = [
+            "n",  # Don't use AI
             "n",  # Don't load saved game
             "y",  # Use manual selection
             # Player 0 selects cards (indices)
@@ -307,10 +282,10 @@ class TestMainJack(MainTestBase):
             # Game actions (indices)
             "1",  # P0: Play 9H points
             "1",  # P1: Play 3H points
-            "3",  # P0: Play JH on 3H (Index 3 based on P0 Turn 2 actions)
-            "4",  # P1: Play JD on 3H (Index 4 based on P1 Turn 2 actions)
-            "3",  # P0: Play JS on 3H (Index 3 based on P0 Turn 3 actions)
-            "4",  # P1: Play JC on 3H (Index 4 based on P1 Turn 3 actions)
+            "Jack of Hearts as jack on Three of Hearts",  # P0: Play JH on 3H (Index 3 based on P0 Turn 2 actions)
+            "Jack of Diamonds as jack on [Stolen from opponent] [Jack] Three of Hearts",  # P1: Play JD on 3H (Index 4 based on P1 Turn 2 actions)
+            "Jack of Spades as jack on [Stolen from opponent] [Jack][Jack] Three of Hearts",  # P0: Play JS on 3H (Index 3 based on P0 Turn 3 actions)
+            "Jack of Clubs as jack on [Stolen from opponent] [Jack][Jack][Jack] Three of Hearts",  # P1: Play JC on 3H (Index 4 based on P1 Turn 3 actions)
             "e",  # End game after checks
             "n",  # Don't save game history
         ]
@@ -332,7 +307,7 @@ class TestMainJack(MainTestBase):
         try:
             # Run the game
             from main import main
-            await main()
+            asyncio.run(main())
         finally:
             # Restore original
             Game.__init__ = original_init

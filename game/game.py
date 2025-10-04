@@ -156,7 +156,9 @@ class Game:
             In test environment (pytest), card display is suppressed.
         """
         all_cards = self.generate_all_cards()
-        available_cards = {str(card): card for card in all_cards}
+        print(f"len all cards: {len(all_cards)}")
+        available_cards = {card.id: card for card in all_cards}
+        print(f"len available cards: {len(available_cards)}")
         hands: List[List[Card]] = [[], []]
 
         # Manual selection for both players
@@ -167,7 +169,7 @@ class Game:
             )
 
             while len(hands[player]) < max_cards:
-                time.sleep(0.1)  # Add small delay to prevent log spam
+                time.sleep(0.05)  # Add small delay to prevent log spam
                 self.display_available_cards(available_cards)
                 choice = input(
                     f"Enter card number to select (or 'done' to finish Player {player}'s selection): "
@@ -182,7 +184,7 @@ class Game:
                     if 0 <= card_num < len(cards):
                         selected_card = cards[card_num]
                         hands[player].append(selected_card)
-                        del available_cards[str(selected_card)]
+                        del available_cards[selected_card.id]
                         self.logger(f"Selected: {selected_card}")
                     else:
                         self.logger("Invalid card number")
@@ -195,6 +197,7 @@ class Game:
         # Create deck from remaining cards
         deck = list(available_cards.values())
         random.shuffle(deck)
+        print(f"len deck: {len(deck)}")
 
         # Initialize game state with empty fields for both players
         fields: List[List[Card]] = [[], []]
@@ -224,7 +227,7 @@ class Game:
 
         Args:
             hands (List[List[Card]]): List of player hands to fill.
-            available_cards (Dict[str, Card]): Dictionary of available cards.
+            available_cards (Dict[str, Card]): Dictionary of available cards keyed by card ID.
 
         Raises:
             ValueError: If there aren't enough cards left to fill the hands.
@@ -237,23 +240,23 @@ class Game:
 
         # Fill player 0's hand to 5 cards
         while len(hands[0]) < 5:
-            time.sleep(0.1)  # Add small delay to prevent log spam
+            time.sleep(0.05)  # Add small delay to prevent log spam
             if not cards:  # Check if we have any cards left
                 raise ValueError("No cards left to fill hands")
             card = random.choice(cards)
             hands[0].append(card)
-            del available_cards[str(card)]
+            del available_cards[card.id]
             cards.remove(card)
             self.logger(f"Randomly added to Player 0's hand: {card}")
 
         # Fill player 1's hand to 6 cards
         while len(hands[1]) < 6:
-            time.sleep(0.1)  # Add small delay to prevent log spam
+            time.sleep(0.05)  # Add small delay to prevent log spam
             if not cards:  # Check if we have any cards left
                 raise ValueError("No cards left to fill hands")
             card = random.choice(cards)
             hands[1].append(card)
-            del available_cards[str(card)]
+            del available_cards[card.id]
             cards.remove(card)
             self.logger(f"Randomly added to Player 1's hand: {card}")
 
@@ -274,6 +277,7 @@ class Game:
                         rank=rank,
                     )
                 )
+        print(f"len generate all cards: {len(cards)}")
         return cards
 
     def generate_shuffled_deck(self) -> List[Card]:

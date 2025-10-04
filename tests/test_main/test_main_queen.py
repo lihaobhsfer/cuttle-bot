@@ -1,4 +1,4 @@
-from typing import Any, List
+import asyncio
 from unittest.mock import Mock, patch
 
 import pytest
@@ -10,12 +10,11 @@ from tests.test_main.test_main_base import MainTestBase, print_and_capture
 
 
 class TestMainQueen(MainTestBase):
-    @pytest.mark.asyncio
     @pytest.mark.timeout(5)
     @patch("builtins.input")
     @patch("builtins.print")
     @patch("game.game.Game.generate_all_cards")
-    async def test_play_queen_through_main(
+    def test_play_queen_through_main(
         self, mock_generate_cards: Mock, mock_print: Mock, mock_input: Mock
     ) -> None:
         """Test playing a Queen through main.py, demonstrating its counter-prevention ability."""
@@ -43,6 +42,7 @@ class TestMainQueen(MainTestBase):
 
         # Mock sequence of inputs for the entire game
         mock_inputs = [
+            "n",  # Don't use AI
             "n",  # Don't load saved game
             "y",  # Use manual selection
             # Player 0 selects cards
@@ -85,7 +85,7 @@ class TestMainQueen(MainTestBase):
         try:
             # Run the game
             from main import main
-            await main()
+            asyncio.run(main())
         finally:
             # Restore original
             Game.__init__ = original_init
@@ -119,9 +119,9 @@ class TestMainQueen(MainTestBase):
         assert len(counter_actions) == 0, "No counter actions should occur when Queen is on field"
         
         # Verify final game state - Player 0 should have Queen on field
-        p0_field = captured_game.game_state.fields[0]
+        p0_field = captured_game.game_state.get_player_field(0)
         queens_on_field = [card for card in p0_field if card.rank == Rank.QUEEN]
-        assert len(queens_on_field) == 1, "Player 0 should have Queen on field"
+        assert len(queens_on_field) == 0, "Player 0 should have No Queen on field since all face cards are destroyed by Six"
         
         # Verify Player 1 still has Two in hand (couldn't use it to counter)
         p1_hand = captured_game.game_state.hands[1]

@@ -1,4 +1,4 @@
-from typing import Any, List
+import asyncio
 from unittest.mock import Mock, patch
 
 import pytest
@@ -10,12 +10,11 @@ from tests.test_main.test_main_base import MainTestBase, print_and_capture
 
 
 class TestMainKing(MainTestBase):
-    @pytest.mark.asyncio
     @pytest.mark.timeout(5)
     @patch("builtins.input")
     @patch("builtins.print")
     @patch("game.game.Game.generate_all_cards")
-    async def test_play_king_through_main(
+    def test_play_king_through_main(
         self, mock_generate_cards: Mock, mock_print: Mock, mock_input: Mock
     ) -> None:
         """Test playing a King through main.py using only user inputs."""
@@ -43,6 +42,7 @@ class TestMainKing(MainTestBase):
 
         # Mock sequence of inputs for the entire game
         mock_inputs = [
+            "n",  # Don't use AI
             "n",  # Don't load saved game
             "y",  # Use manual selection
             # Player 0 selects cards (including Kings and points)
@@ -85,7 +85,7 @@ class TestMainKing(MainTestBase):
         try:
             # Run the game
             from main import main
-            await main()
+            asyncio.run(main())
         finally:
             # Restore original
             Game.__init__ = original_init
@@ -121,6 +121,6 @@ class TestMainKing(MainTestBase):
         
         # Verify Player 0 has enough points to win with reduced target
         p0_score = sum(card.point_value() for card in p0_field if card.rank != Rank.KING)
-        target_reduction = len(kings_on_field) * 5  # Each King reduces target by 5
-        effective_target = 21 - target_reduction
+        effective_target = captured_game.game_state.get_player_target(0)
+        assert effective_target == 10, f"Player 0 should have target 10, got {effective_target}"
         assert p0_score >= effective_target, f"Player 0 should have won with score {p0_score} vs target {effective_target}"

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Any, List
 from unittest.mock import Mock, patch
@@ -11,12 +12,11 @@ from tests.test_main.test_main_base import MainTestBase, print_and_capture
 
 
 class TestMainAce(MainTestBase):
-    @pytest.mark.asyncio
     @pytest.mark.timeout(5)
     @patch("builtins.input")
     @patch("builtins.print")
     @patch("game.game.Game.generate_all_cards")
-    async def test_play_ace_through_main(
+    def test_play_ace_through_main(
         self, mock_generate_cards: Mock, mock_print: Mock, mock_input: Mock
     ) -> None:
         """Test playing an Ace as a one-off through main.py to destroy point cards."""
@@ -89,7 +89,7 @@ class TestMainAce(MainTestBase):
         try:
             # Run the game
             from main import main
-            await main()
+            asyncio.run(main())
         finally:
             # Restore original
             Game.__init__ = original_init
@@ -151,12 +151,11 @@ class TestMainAce(MainTestBase):
         assert Rank.KING in p0_hand_ranks and Rank.TWO in p0_hand_ranks, "Player 0 should have King and Two"
         assert Rank.EIGHT in p1_hand_ranks, "Player 1 should have Eight in hand"
 
-    @pytest.mark.asyncio
     @pytest.mark.timeout(5)
     @patch("builtins.input")
     @patch("builtins.print")
     @patch("game.game.Game.generate_all_cards")
-    async def test_play_ace_with_countering_through_main(
+    def test_play_ace_with_countering_through_main(
         self, mock_generate_cards: Mock, mock_print: Mock, mock_input: Mock
     ) -> None:
         """Test playing an Ace as a one-off through main.py and getting countered."""
@@ -230,7 +229,7 @@ class TestMainAce(MainTestBase):
         try:
             # Run the game
             from main import main
-            await main()
+            asyncio.run(main())
         finally:
             # Restore original
             Game.__init__ = original_init

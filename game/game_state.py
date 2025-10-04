@@ -260,6 +260,7 @@ class GameState:
         Returns:
             bool: True if the game is in stalemate, False otherwise.
         """
+        print(f"deck size: {len(self.deck)}, winner: {self.winner()}")
         return self.deck == [] and not self.winner()
 
     def _record_action_to_history(self, action: Action) -> None:
