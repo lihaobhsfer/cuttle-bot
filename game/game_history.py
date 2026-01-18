@@ -197,6 +197,8 @@ class GameHistory:
             return f"Player {player} resolves {target_str}"
         elif action_type == ActionType.JACK:
             return f"Player {player} uses {card_str} to steal {target_str}"
+        elif action_type == ActionType.TAKE_FROM_DISCARD:
+            return f"Player {player} takes {card_str} from discard"
         else:
             return f"Player {player} performs {action_type.value}"
     

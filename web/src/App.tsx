@@ -1,0 +1,518 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import './App.css'
+import { useGameSession } from './api/hooks'
+import type { ActionView, CardView } from './api/types'
+
+function App() {
+  const {
+    session,
+    history,
+    isLoading,
+    error,
+    submitAction,
+    isSubmitting,
+    startNewSession,
+  } = useGameSession()
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
+  const [selectedActionId, setSelectedActionId] = useState<number | null>(null)
+
+  const legalActions = session?.legal_actions ?? []
+  const state = session?.state
+  const playerHand = state?.hands[0] ?? []
+  const opponentField = state?.effective_fields[1] ?? []
+  const playerField = state?.effective_fields[0] ?? []
+  const historyEntries = history?.entries ?? []
+  const historyListRef = useRef<HTMLUListElement | null>(null)
+  const lastEntryRef = useRef<HTMLLIElement | null>(null)
+  const modalActions = useMemo(
+    () =>
+      legalActions.filter(
+        (action) => action.type === 'Resolve' || action.type === 'Counter',
+      ),
+    [legalActions],
+  )
+  const discardActions = useMemo(
+    () => legalActions.filter((action) => action.type === 'Take From Discard'),
+    [legalActions],
+  )
+  const modalActive =
+    Boolean(state?.resolving_one_off) && state?.current_action_player === 0
+  const discardModalActive =
+    Boolean(state?.resolving_three) && state?.current_action_player === 0
+  const modalCard = state?.one_off_card_to_counter ?? null
+
+  const actionChoices = useMemo(() => {
+    if (!selectedCardId) {
+      return legalActions.filter((action) => action.type === 'Draw')
+    }
+    const matching = legalActions.filter(
+      (action) => action.card?.id === selectedCardId,
+    )
+    return matching.length ? matching : legalActions
+  }, [legalActions, selectedCardId])
+
+  const actionSummary = useMemo(() => {
+    if (!legalActions.length) return []
+    return Array.from(new Set(legalActions.map((action) => action.type))).slice(
+      0,
+      3,
+    )
+  }, [legalActions])
+
+  const groupedHistory = useMemo(() => {
+    const groups: Array<{ turn: number; entries: typeof historyEntries }> = []
+    historyEntries.forEach((entry) => {
+      const existing = groups.find((group) => group.turn === entry.turn_number)
+      if (existing) {
+        existing.entries.push(entry)
+      } else {
+        groups.push({ turn: entry.turn_number, entries: [entry] })
+      }
+    })
+    return groups
+  }, [historyEntries])
+
+  const selectedAction = legalActions.find(
+    (action) => action.id === selectedActionId,
+  )
+  const isGameOver = state?.status === 'win'
+  const winnerLabel = useMemo(() => {
+    if (!state) return null
+    if (state.scores[0] >= state.targets[0]) return 'You'
+    if (state.scores[1] >= state.targets[1]) return 'AI'
+    return null
+  }, [state])
+
+  useEffect(() => {
+    if (discardModalActive) {
+      if (selectedActionId === null && discardActions.length > 0) {
+        setSelectedActionId(discardActions[0].id)
+      }
+      return
+    }
+    if (!modalActive) return
+    if (selectedActionId !== null) return
+    if (modalActions.length > 0) {
+      setSelectedActionId(modalActions[0].id)
+    }
+  }, [
+    discardModalActive,
+    discardActions,
+    modalActive,
+    modalActions,
+    selectedActionId,
+  ])
+
+  useEffect(() => {
+    if (!historyListRef.current) return
+    historyListRef.current.scrollTop = historyListRef.current.scrollHeight
+  }, [historyEntries.length])
+
+  const handleActionSelect = (action: ActionView) => {
+    setSelectedActionId(action.id)
+  }
+
+  const handleConfirm = () => {
+    if (!session || selectedActionId === null) return
+    submitAction({
+      actionId: selectedActionId,
+      stateVersion: session.state_version,
+    })
+  }
+
+  return (
+    <div className="app">
+      <header className="top-bar">
+        <div className="brand">
+          <span className="brand-mark">Cuttle</span>
+          <span className="brand-sub">AI sparring table</span>
+        </div>
+        <div className="scoreboard">
+          <div className="score-chip">
+            <span className="chip-label">You</span>
+            <span className="chip-score">
+              {state ? `${state.scores[0]} / ${state.targets[0]}` : '--'}
+            </span>
+          </div>
+          <div className="score-chip muted">
+            <span className="chip-label">AI</span>
+            <span className="chip-score">
+              {state ? `${state.scores[1]} / ${state.targets[1]}` : '--'}
+            </span>
+          </div>
+        </div>
+        <div className="controls">
+          <button className="ghost">History</button>
+          <button className="ghost" onClick={startNewSession}>
+            New Game
+          </button>
+          <button className="primary" onClick={startNewSession}>
+            End Game
+          </button>
+        </div>
+      </header>
+
+      <main className="table">
+        <aside className="rail left">
+          <div className="stack-card deck">
+            <span className="stack-title">Deck</span>
+            <span className="stack-count">{state?.deck_count ?? '--'}</span>
+          </div>
+          <div className="stack-card scrap">
+            <span className="stack-title">Scrap</span>
+            <span className="stack-count">{state?.discard_count ?? '--'}</span>
+            <button className="ghost small">View</button>
+          </div>
+        </aside>
+
+        <section className="table-surface">
+          <div className="zone opponent">
+            <div className="zone-label-row">
+              <div className="zone-label">AI Field</div>
+              <div className="zone-chip">
+                AI hand: {state?.hand_counts?.[1] ?? '--'}
+              </div>
+            </div>
+            <div className="card-row">
+              {opponentField.map((card) => (
+                <CardTile key={card.id} card={card} />
+              ))}
+            </div>
+          </div>
+
+          <div className="center-zone">
+            <div className="phase-pill">
+              {state?.current_action_player === 0 ? 'Your turn' : 'AI thinking'} ·
+              {state?.status ?? 'Choose an action'}
+            </div>
+            <div className="action-hints">
+              {actionSummary.map((action) => (
+                <span
+                  key={action}
+                  className={`hint ${action === 'Points' ? 'accent' : ''}`}
+                >
+                  {action}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="zone player">
+            <div className="zone-label">Your Field</div>
+            <div className="card-row">
+              {playerField.map((card) => (
+                <CardTile key={card.id} card={card} />
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <aside className="rail right">
+          <div className="history-panel">
+            <div className="panel-header">
+              <span>History</span>
+              <button
+                className="ghost small"
+                onClick={() => {
+                  if (historyListRef.current) {
+                    historyListRef.current.scrollTo({
+                      top: historyListRef.current.scrollHeight,
+                      behavior: 'auto',
+                    })
+                  } else {
+                    lastEntryRef.current?.scrollIntoView({
+                      behavior: 'auto',
+                      block: 'end',
+                    })
+                  }
+                }}
+              >
+                Jump to last
+              </button>
+            </div>
+            <ul ref={historyListRef}>
+              {groupedHistory.map((group) => (
+                <li key={`turn-${group.turn}`} className="history-turn">
+                  Turn {group.turn}
+                  <ul>
+                    {group.entries.map((entry, index) => {
+                      const isLast =
+                        entry === historyEntries[historyEntries.length - 1]
+                      return (
+                        <li
+                          key={`${entry.timestamp}-${entry.description}-${index}`}
+                          className="history-entry"
+                          ref={isLast ? lastEntryRef : null}
+                        >
+                          {entry.description}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </aside>
+      </main>
+
+      <footer className="hand-area">
+        <div className="action-prompt">
+          <div>
+            <div className="action-title">
+              {selectedAction?.label ?? 'Select an action'}
+            </div>
+            <div className="action-sub">
+              {state?.resolving_one_off
+                ? 'Resolve or counter the one-off.'
+                : 'Choose a card and action to continue.'}
+            </div>
+          </div>
+          <div className="action-buttons">
+            <button
+              className="ghost"
+              onClick={() => setSelectedActionId(null)}
+              disabled={!selectedAction}
+            >
+              Cancel
+            </button>
+            <button
+              className="primary"
+              onClick={handleConfirm}
+              disabled={
+                selectedActionId === null ||
+                isSubmitting ||
+                !session ||
+                Boolean(isGameOver)
+              }
+            >
+              {isSubmitting ? 'Sending...' : 'Confirm'}
+            </button>
+          </div>
+        </div>
+        <div className="action-choice-row">
+          {actionChoices.map((action) => (
+            <button
+              key={action.id}
+              className={`ghost ${
+                selectedActionId === action.id ? 'selected-action' : ''
+              }`}
+              onClick={() => handleActionSelect(action)}
+              disabled={Boolean(isGameOver)}
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
+        <div className="hand">
+          {playerHand.map((card) => (
+            <CardTile
+              key={card.id}
+              card={card}
+              isHand
+              selected={selectedCardId === card.id}
+              onClick={() =>
+                setSelectedCardId((prev) => (prev === card.id ? null : card.id))
+              }
+            />
+          ))}
+        </div>
+      </footer>
+      {isGameOver && (
+        <div className="modal-scrim">
+          <div className="modal">
+            <div className="modal-header">
+              <div>
+                <div className="modal-title">Game Over</div>
+                <div className="modal-sub">
+                  {winnerLabel ? `${winnerLabel} win.` : 'Game ended.'}
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="primary" onClick={startNewSession}>
+                New Game
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {discardModalActive && (
+        <div className="modal-scrim">
+          <div className="modal">
+            <div className="modal-header">
+              <div>
+                <div className="modal-title">Take From Scrap</div>
+                <div className="modal-sub">
+                  Choose one card from the scrap pile to add to your hand.
+                </div>
+              </div>
+              <button
+                className="ghost small"
+                onClick={() => setSelectedActionId(null)}
+              >
+                Close
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="modal-actions">
+                {discardActions.map((action) => (
+                  <button
+                    key={action.id}
+                    className={`ghost ${
+                      selectedActionId === action.id ? 'selected-action' : ''
+                    }`}
+                    onClick={() => handleActionSelect(action)}
+                  >
+                    {action.card ? action.card.display : action.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button
+                className="primary"
+                onClick={handleConfirm}
+                disabled={selectedActionId === null || isSubmitting || !session}
+              >
+                {isSubmitting ? 'Sending...' : 'Take card'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {modalActive && !discardModalActive && (
+        <div className="modal-scrim">
+          <div className="modal">
+            <div className="modal-header">
+              <div>
+                <div className="modal-title">Resolve One-Off</div>
+                <div className="modal-sub">
+                  Choose to counter or resolve the pending action.
+                </div>
+              </div>
+              <button
+                className="ghost small"
+                onClick={() => setSelectedActionId(null)}
+              >
+                Close
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="modal-card">
+                {modalCard ? (
+                  <CardTile card={modalCard} />
+                ) : (
+                  <div className="modal-card-placeholder">No target</div>
+                )}
+              </div>
+              <div className="modal-actions">
+                {modalActions.map((action) => (
+                  <button
+                    key={action.id}
+                    className={`ghost ${
+                      selectedActionId === action.id ? 'selected-action' : ''
+                    }`}
+                    onClick={() => handleActionSelect(action)}
+                  >
+                    {action.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button
+                className="primary"
+                onClick={handleConfirm}
+                disabled={selectedActionId === null || isSubmitting || !session}
+              >
+                {isSubmitting ? 'Sending...' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {isLoading && <div className="status-banner">Starting session...</div>}
+      {error && (
+        <div className="status-banner error">
+          Failed to load session. Check server.
+        </div>
+      )}
+    </div>
+  )
+}
+
+type CardTileProps = {
+  card: CardView
+  selected?: boolean
+  isHand?: boolean
+  onClick?: () => void
+}
+
+const oneOffRanks = new Set(['ACE', 'THREE', 'FOUR', 'FIVE', 'SIX'])
+const faceRanks = new Set(['JACK', 'QUEEN', 'KING', 'EIGHT'])
+
+function cardTag(card: CardView) {
+  if (card.purpose === 'POINTS') return 'points'
+  if (card.purpose === 'FACE_CARD' || card.purpose === 'JACK') return 'face'
+  if (card.purpose === 'ONE_OFF' || card.purpose === 'COUNTER') return 'one-off'
+  if (oneOffRanks.has(card.rank)) return 'one-off'
+  if (faceRanks.has(card.rank)) return 'face'
+  return 'points'
+}
+
+function rankShort(rank: string) {
+  const map: Record<string, string> = {
+    ACE: 'A',
+    TWO: '2',
+    THREE: '3',
+    FOUR: '4',
+    FIVE: '5',
+    SIX: '6',
+    SEVEN: '7',
+    EIGHT: '8',
+    NINE: '9',
+    TEN: '10',
+    JACK: 'J',
+    QUEEN: 'Q',
+    KING: 'K',
+  }
+  return map[rank] ?? rank
+}
+
+function suitShort(suit: string) {
+  const map: Record<string, string> = {
+    CLUBS: 'C',
+    DIAMONDS: 'D',
+    HEARTS: 'H',
+    SPADES: 'S',
+  }
+  return map[suit] ?? suit
+}
+
+function CardTile({ card, selected, isHand, onClick }: CardTileProps) {
+  const tag = cardTag(card)
+  const rank = rankShort(card.rank)
+  const suit = suitShort(card.suit)
+
+  return (
+    <div
+      className={[
+        'card-tile',
+        `card-${tag}`,
+        selected ? 'selected' : '',
+        isHand ? 'hand-card' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+      onClick={onClick}
+      data-testid={`card-${card.id}`}
+    >
+      <div className="card-rank">{rank}</div>
+      <div className="card-suit">{suit}</div>
+      <div className="card-tag">{tag}</div>
+    </div>
+  )
+}
+
+export default App

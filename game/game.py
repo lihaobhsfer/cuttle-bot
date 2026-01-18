@@ -52,6 +52,7 @@ class Game:
         test_deck: Optional[List[Card]] = None,
         logger: Callable[..., Any] = print,
         ai_player: Optional["AIPlayer"] = None,
+        input_mode: str = "terminal",
     ):
         """Initialize a new game of Cuttle.
 
@@ -67,6 +68,7 @@ class Game:
         """
         self.players = [0, 1]
         self.logger = logger
+        self.input_mode = input_mode
 
         # Create save directory if it doesn't exist
         os.makedirs(self.SAVE_DIR, exist_ok=True)
@@ -140,7 +142,14 @@ class Game:
         deck = self.generate_shuffled_deck()
         hands = self.deal_cards(deck)
         fields: List[List[Card]] = [[], []]
-        self.game_state = GameState(hands, fields, deck[11:], [], logger=self.logger)
+        self.game_state = GameState(
+            hands,
+            fields,
+            deck[11:],
+            [],
+            logger=self.logger,
+            input_mode=self.input_mode,
+        )
 
     def initialize_with_manual_selection(self) -> None:
         """Initialize the game with manual card selection.
@@ -201,7 +210,9 @@ class Game:
 
         # Initialize game state with empty fields for both players
         fields: List[List[Card]] = [[], []]
-        self.game_state = GameState(hands, fields, deck, [], logger=self.logger)
+        self.game_state = GameState(
+            hands, fields, deck, [], logger=self.logger, input_mode=self.input_mode
+        )
 
     def display_available_cards(self, available_cards: Dict[str, Card]) -> None:
         """Display available cards for selection.
@@ -304,7 +315,9 @@ class Game:
         hands = [deck[0:5], deck[5:11]]
         return hands
 
-    def initialize_with_test_deck(self, test_deck: List[Card], ai_player: Optional["AIPlayer"] = None) -> None:
+    def initialize_with_test_deck(
+        self, test_deck: List[Card], ai_player: Optional["AIPlayer"] = None
+    ) -> None:
         """Initialize the game with a predefined deck for testing.
 
         Args:
@@ -326,4 +339,5 @@ class Game:
             [],
             logger=self.logger,
             ai_player=ai_player,
+            input_mode=self.input_mode,
         )

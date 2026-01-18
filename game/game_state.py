@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple,
                     cast)
 
-from game.action import Action, ActionType
+from game.action import Action, ActionSource, ActionType
 from game.card import Card, Purpose, Rank
 from game.game_history import GameHistory
 from game.utils import log_print
@@ -45,10 +45,12 @@ class GameState:
         resolving_two (bool): Whether a Two's effect is being resolved.
         resolving_one_off (bool): Whether a one-off effect is being resolved.
         resolving_three (bool): Whether a Three's effect is being resolved.
+        pending_three_player (Optional[int]): Player awaiting a discard selection for Three.
         one_off_card_to_counter (Optional[Card]): The one-off card that can be countered.
         logger (callable): Function to use for logging.
         use_ai (bool): Whether AI player is enabled.
         ai_player: The AI player instance if enabled.
+        input_mode (str): "terminal" for interactive input or "api" for external input.
         overall_turn (int): The total number of turns played.
         game_history (GameHistory): Chronological record of all game actions.
     """
@@ -68,6 +70,7 @@ class GameState:
         logger: Callable[..., Any] = print,
         use_ai: bool = False,
         ai_player: Optional["AIPlayer"] = None,
+        input_mode: str = "terminal",
     ):
         """Initialize a new game state.
 
@@ -92,10 +95,12 @@ class GameState:
         self.resolving_two = False
         self.resolving_one_off = False
         self.resolving_three = False
+        self.pending_three_player: Optional[int] = None
         self.one_off_card_to_counter = None
         self.logger = logger
         self.use_ai = use_ai
         self.ai_player = ai_player
+        self.input_mode = input_mode
         self.overall_turn = 0
         self.last_action_played_by = None
         self.game_history = GameHistory()
@@ -297,6 +302,9 @@ class GameState:
         elif action.action_type == ActionType.COUNTER:
             source = "hand"
             destination = "discard_pile"
+        elif action.action_type == ActionType.TAKE_FROM_DISCARD:
+            source = "discard_pile"
+            destination = "hand"
         
         # Record the action in game history
         self.game_history.record_action(
@@ -337,6 +345,28 @@ class GameState:
 
         if action.action_type == ActionType.DRAW:
             self.draw_card()
+            turn_finished = True
+            return turn_finished, should_stop, winner
+        elif action.action_type == ActionType.TAKE_FROM_DISCARD:
+            if action.card is None:
+                log_print("Error: TAKE_FROM_DISCARD action called without a card.")
+                return True, True, None
+            if not self.resolving_three:
+                log_print("Error: TAKE_FROM_DISCARD called when not resolving three.")
+                return True, True, None
+            if action.card not in self.discard_pile:
+                log_print("Error: Selected card not in discard pile.")
+                return True, True, None
+
+            chosen_card = action.card
+            self.discard_pile.remove(chosen_card)
+            chosen_card.clear_player_info()
+            player = self.pending_three_player
+            if player is None:
+                player = action.played_by
+            self.hands[player].append(chosen_card)
+            self.resolving_three = False
+            self.pending_three_player = None
             turn_finished = True
             return turn_finished, should_stop, winner
         elif action.action_type == ActionType.POINTS:
@@ -408,6 +438,9 @@ class GameState:
                 turn_finished, played_by = self.play_one_off(
                     self.turn, action.target, None, action.played_by
                 )
+                if self.resolving_three:
+                    # Wait for discard selection to complete the effect.
+                    return False, should_stop, winner
                 if turn_finished:
                     winner = self.winner()
                     should_stop = winner is not None
@@ -422,7 +455,7 @@ class GameState:
                 turn_finished = True
                 if won:
                     should_stop = True
-                    winner = self.turn
+                    winner = self.winner()
                 return turn_finished, should_stop, winner
             else:
                 # Handle error: FACE_CARD action requires a card
@@ -436,7 +469,7 @@ class GameState:
                 turn_finished = True
                 if won:
                     should_stop = True
-                    winner = self.turn
+                    winner = self.winner()
                 return turn_finished, should_stop, winner
             else:
                 # Handle error: JACK action requires card and target
@@ -646,7 +679,7 @@ class GameState:
                     if self.discard_pile:
                         chosen_card = self.discard_pile.pop(0)
                         self.hands[self.turn].append(chosen_card)
-            else:
+            elif self.input_mode == "terminal":
                 # Create a list of card options for the input handler
                 card_options = [str(card) for card in self.discard_pile]
 
@@ -665,6 +698,12 @@ class GameState:
                     print(f"Took {chosen_card} from discard pile")
                 else:
                     print("Invalid selection")
+            else:
+                # Defer selection for API-driven input.
+                self.resolving_three = True
+                self.pending_three_player = self.turn
+                self.current_action_player = self.turn
+                return
         elif card.rank == Rank.FOUR:
             # Opponent needs to select 2 cards from their hand to discard
             # if opponent only has 1 card, they can discard that one
@@ -816,7 +855,12 @@ class GameState:
             # Attach Jack to the target card
             target.attachments.append(card) # target confirmed not None
 
-            if self.winner() is not None:
+            winner = self.winner()
+            if winner is not None:
+                print(
+                    f"Player {winner} wins! Score: {self.get_player_score(winner)} points (target: {self.get_player_target(winner)} with {len([c for c in self.fields[winner] if c.rank == Rank.KING])} Kings)"
+                )
+                self.status = "win"
                 return True
         return False
 
@@ -832,11 +876,18 @@ class GameState:
         # If resolving three, THIS IS HANDLED BY apply_one_off_effect
         # No specific actions needed here, the user/AI interaction happens there
         if self.resolving_three:
-            # Returning empty list or specific instruction might be better
-            # For now, let's assume apply_one_off_effect handles the choice
-            # Or perhaps we need an ActionType.CHOOSE_FROM_DISCARD?
-            # For mypy, let's just bypass this section for action generation
-            return [] # Or handle as appropriate for game flow
+            if not self.discard_pile:
+                return []
+            for card in self.discard_pile:
+                actions.append(
+                    Action(
+                        ActionType.TAKE_FROM_DISCARD,
+                        self.current_action_player,
+                        card=card,
+                        source=ActionSource.DISCARD,
+                    )
+                )
+            return actions
 
         # If resolving one-off, only allow counter or resolve
         if self.resolving_one_off:
@@ -1005,10 +1056,12 @@ class GameState:
             "resolving_two": self.resolving_two,
             "resolving_one_off": self.resolving_one_off,
             "resolving_three": self.resolving_three,
+            "pending_three_player": self.pending_three_player,
             "one_off_card_to_counter": self.one_off_card_to_counter.to_dict()
             if self.one_off_card_to_counter is not None
             else None,
             "use_ai": self.use_ai,
+            "input_mode": self.input_mode,
             "overall_turn": self.overall_turn,
             "game_history": self.game_history.to_dict(),
         }
@@ -1050,12 +1103,14 @@ class GameState:
         state.resolving_two = data.get("resolving_two", False)
         state.resolving_one_off = data.get("resolving_one_off", False)
         state.resolving_three = data.get("resolving_three", False)
+        state.pending_three_player = data.get("pending_three_player")
         state.one_off_card_to_counter = (
             Card.from_dict(one_off_counter_data)
             if one_off_counter_data is not None
             else None
         )
         state.ai_player = None  # Placeholder, actual instance set by Game
+        state.input_mode = data.get("input_mode", "terminal")
         state.overall_turn = data.get("overall_turn", 0)
         
         # Load game history if present, otherwise create new empty history

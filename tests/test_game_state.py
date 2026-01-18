@@ -1,6 +1,7 @@
 import unittest
 from typing import List, Optional, Tuple
 
+from game.action import Action, ActionType
 from game.card import Card, Purpose, Rank, Suit
 from game.game_state import GameState
 
@@ -224,6 +225,37 @@ class TestGameState(unittest.TestCase):
         self.assertIsNone(played_by)
 
         self.assertEqual(len(self.game_state.hands[0]), 8)
+
+    def test_one_off_turn_order_with_counter(self) -> None:
+        """Ensure counter chain alternates current_action_player."""
+        self.deck = []
+        self.hands = [
+            [Card("1", Suit.HEARTS, Rank.FIVE)],
+            [Card("2", Suit.SPADES, Rank.TWO)],
+        ]
+        self.fields = [[], []]
+        self.discard_pile = []
+
+        self.game_state = GameState(
+            self.hands, self.fields, self.deck, self.discard_pile
+        )
+
+        one_off_action = Action(ActionType.ONE_OFF, 0, card=self.hands[0][0])
+        turn_finished, _, _ = self.game_state.update_state(one_off_action)
+        self.assertFalse(turn_finished)
+        self.assertTrue(self.game_state.resolving_one_off)
+        self.game_state.next_player()
+        self.assertEqual(self.game_state.current_action_player, 1)
+
+        legal_actions = self.game_state.get_legal_actions()
+        counter_action = next(
+            action for action in legal_actions if action.action_type == ActionType.COUNTER
+        )
+        turn_finished, _, _ = self.game_state.update_state(counter_action)
+        self.assertFalse(turn_finished)
+        self.assertTrue(self.game_state.resolving_one_off)
+        self.game_state.next_player()
+        self.assertEqual(self.game_state.current_action_player, 0)
 
         self.deck = [
             Card("001", Suit.CLUBS, Rank.ACE),
@@ -970,6 +1002,7 @@ class TestGameState(unittest.TestCase):
         self.assertEqual(game_state.get_player_score(0), 17)
         self.assertEqual(game_state.get_player_score(1), 9)
         self.assertEqual(game_state.winner(), 0)
+        self.assertEqual(game_state.status, "win")
 
     def test_jack_scuttle(self) -> None:
         """If a point card is stolen by a jack, and the point card is being scuttled, the jack should be discarded together with the point cards."""
