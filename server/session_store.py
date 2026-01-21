@@ -5,15 +5,28 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, Optional, Protocol
 from uuid import uuid4
 
 from game.game import Game
+from game.game_state import GameState
+
+class AIPlayerProtocol(Protocol):
+    async def get_action(self, game_state: GameState, legal_actions: list) -> object: ...
+    def get_action_sync(self, game_state: GameState, legal_actions: list) -> object: ...
+    def choose_card_from_discard(self, discard_pile: list) -> object: ...
+    def choose_two_cards_from_hand(self, hand: list) -> list: ...
+
 
 try:
-    from game.rl_ai_player import RLAIPlayerWrapper as AIPlayer
+    from game.ai_player import AIPlayer as LLMPlayer
 except ImportError:  # pragma: no cover - defensive for limited environments
-    AIPlayer = None  # type: ignore[assignment]
+    LLMPlayer = None  # type: ignore[assignment]
+
+try:
+    from game.rl_ai_player import RLAIPlayerWrapper as RLPlayer
+except ImportError:  # pragma: no cover - defensive for limited environments
+    RLPlayer = None  # type: ignore[assignment]
 
 
 @dataclass
@@ -22,7 +35,7 @@ class GameSession:
 
     id: str
     game: Game
-    ai_player: Optional["AIPlayer"]
+    ai_player: Optional[AIPlayerProtocol]
     created_at: datetime
     updated_at: datetime
     state_version: int
@@ -46,7 +59,8 @@ class SessionStore:
         *,
         use_ai: bool = True,
         manual_selection: bool = False,
-        ai_player_factory: Optional[Callable[[], "AIPlayer"]] = None,
+        ai_player_factory: Optional[Callable[[], AIPlayerProtocol]] = None,
+        ai_type: str = "rl",
     ) -> GameSession:
         """Create and store a new session."""
         lock = await self._get_lock()
@@ -56,8 +70,16 @@ class SessionStore:
             if use_ai:
                 if ai_player_factory is not None:
                     ai_player = ai_player_factory()
-                elif AIPlayer is not None:
-                    ai_player = AIPlayer()
+                elif ai_type == "llm":
+                    if LLMPlayer is None:
+                        raise ValueError("LLM AI is not available")
+                    ai_player = LLMPlayer()
+                elif ai_type == "rl":
+                    if RLPlayer is None:
+                        raise ValueError("RL AI is not available")
+                    ai_player = RLPlayer()
+                else:
+                    raise ValueError(f"Unknown ai_type: {ai_type}")
             game = Game(
                 manual_selection=manual_selection,
                 ai_player=ai_player,

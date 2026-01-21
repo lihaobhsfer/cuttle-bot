@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -58,9 +58,11 @@ class GameStateView(BaseModel):
     resolving_two: bool
     resolving_one_off: bool
     resolving_three: bool
+    resolving_four: bool
     overall_turn: int
     use_ai: bool
     one_off_card_to_counter: Optional[CardView]
+    pending_four_count: int
 
 
 class CreateSessionRequest(BaseModel):
@@ -68,6 +70,7 @@ class CreateSessionRequest(BaseModel):
 
     use_ai: bool = True
     manual_selection: bool = False
+    ai_type: Literal["llm", "rl"] = "rl"
 
 
 class ActionRequest(BaseModel):

@@ -7,11 +7,11 @@ import {
   fetchSession,
   submitAction,
 } from './client'
-import type { ActionResponse, SessionResponse } from './types'
+import type { ActionResponse, AiType, SessionResponse } from './types'
 
 type ActionArgs = { actionId: number; stateVersion: number }
 
-type Options = { autoStart?: boolean }
+type Options = { autoStart?: boolean; aiType?: AiType }
 
 export function useGameSession(options: Options = {}) {
   const queryClient = useQueryClient()
@@ -19,7 +19,7 @@ export function useGameSession(options: Options = {}) {
   const hasStartedRef = useRef(false)
 
   const createSessionMutation = useMutation({
-    mutationFn: createSession,
+    mutationFn: (aiType: AiType) => createSession(aiType),
     onSuccess: (data) => {
       setSessionId(data.session_id)
       queryClient.setQueryData(['session', data.session_id], data)
@@ -61,33 +61,36 @@ export function useGameSession(options: Options = {}) {
     },
   })
 
-  const startNewSession = () => {
+  const startNewSession = (nextAiType?: AiType) => {
+    const resolvedAiType =
+      nextAiType === 'llm' || nextAiType === 'rl'
+        ? nextAiType
+        : options.aiType ?? 'rl'
     const previousSession = sessionId
     if (previousSession) {
       queryClient.removeQueries({ queryKey: ['session', previousSession] })
       queryClient.removeQueries({ queryKey: ['history', previousSession] })
     }
     setSessionId(null)
-    createSessionMutation.mutate()
+    createSessionMutation.mutate(resolvedAiType)
   }
 
   useEffect(() => {
     if (options.autoStart === false) return
     if (!sessionId && !createSessionMutation.isPending && !hasStartedRef.current) {
       hasStartedRef.current = true
-      createSessionMutation.mutate()
+      createSessionMutation.mutate(options.aiType ?? 'rl')
     }
-  }, [options.autoStart, sessionId, createSessionMutation])
+  }, [options.aiType, options.autoStart, sessionId, createSessionMutation])
 
   const error = createSessionMutation.error ?? sessionQuery.error ?? null
+  const sessionData = sessionQuery.data ?? createSessionMutation.data ?? null
   const isLoading =
-    createSessionMutation.isPending ||
-    sessionQuery.isPending ||
-    (!sessionId && !error)
+    createSessionMutation.isPending || (!sessionData && !error && !sessionId)
 
   return {
     sessionId,
-    session: sessionQuery.data ?? createSessionMutation.data ?? null,
+    session: sessionData,
     history: historyQuery.data ?? null,
     isLoading,
     error,

@@ -46,6 +46,9 @@ class GameState:
         resolving_one_off (bool): Whether a one-off effect is being resolved.
         resolving_three (bool): Whether a Three's effect is being resolved.
         pending_three_player (Optional[int]): Player awaiting a discard selection for Three.
+        resolving_four (bool): Whether a Four's effect is being resolved.
+        pending_four_player (Optional[int]): Player awaiting discard selection for Four.
+        pending_four_count (int): Number of discards remaining for Four.
         one_off_card_to_counter (Optional[Card]): The one-off card that can be countered.
         logger (callable): Function to use for logging.
         use_ai (bool): Whether AI player is enabled.
@@ -96,6 +99,9 @@ class GameState:
         self.resolving_one_off = False
         self.resolving_three = False
         self.pending_three_player: Optional[int] = None
+        self.resolving_four = False
+        self.pending_four_player: Optional[int] = None
+        self.pending_four_count = 0
         self.one_off_card_to_counter = None
         self.logger = logger
         self.use_ai = use_ai
@@ -199,6 +205,16 @@ class GameState:
             if card.purpose == Purpose.POINTS and card.is_stolen():
                 field.append(card)
         return field
+
+    def _is_point_controlled_by(self, player: int, card: Card) -> bool:
+        if card.purpose != Purpose.POINTS:
+            return False
+        if card in self.fields[player]:
+            return not card.is_stolen()
+        opponent = (player + 1) % len(self.hands)
+        if card in self.fields[opponent]:
+            return card.is_stolen()
+        return False
 
     def get_player_target(self, player: int) -> int:
         """Calculate a player's current target score based on Kings.
@@ -305,6 +321,9 @@ class GameState:
         elif action.action_type == ActionType.TAKE_FROM_DISCARD:
             source = "discard_pile"
             destination = "hand"
+        elif action.action_type == ActionType.DISCARD_FROM_HAND:
+            source = "hand"
+            destination = "discard_pile"
         
         # Record the action in game history
         self.game_history.record_action(
@@ -346,6 +365,31 @@ class GameState:
         if action.action_type == ActionType.DRAW:
             self.draw_card()
             turn_finished = True
+            return turn_finished, should_stop, winner
+        elif action.action_type == ActionType.DISCARD_FROM_HAND:
+            if action.card is None:
+                log_print("Error: DISCARD_FROM_HAND action called without a card.")
+                return True, True, None
+            if not self.resolving_four:
+                log_print("Error: DISCARD_FROM_HAND called when not resolving four.")
+                return True, True, None
+            player = self.pending_four_player
+            if player is None:
+                player = action.played_by
+            if action.card not in self.hands[player]:
+                log_print("Error: Selected card not in player's hand.")
+                return True, True, None
+            self.hands[player].remove(action.card)
+            self.discard_pile.append(action.card)
+            action.card.clear_player_info()
+            self.pending_four_count = max(self.pending_four_count - 1, 0)
+            if self.pending_four_count == 0 or not self.hands[player]:
+                self.resolving_four = False
+                self.pending_four_player = None
+                self.pending_four_count = 0
+                turn_finished = True
+            else:
+                turn_finished = False
             return turn_finished, should_stop, winner
         elif action.action_type == ActionType.TAKE_FROM_DISCARD:
             if action.card is None:
@@ -441,6 +485,9 @@ class GameState:
                 if self.resolving_three:
                     # Wait for discard selection to complete the effect.
                     return False, should_stop, winner
+                if self.resolving_four:
+                    # Wait for discard selection to complete the effect.
+                    return False, should_stop, winner
                 if turn_finished:
                     winner = self.winner()
                     should_stop = winner is not None
@@ -520,6 +567,9 @@ class GameState:
 
     def scuttle(self, card: Card, target: Card) -> None:
         # Validate scuttle conditions
+        opponent = (self.turn + 1) % len(self.hands)
+        if not self._is_point_controlled_by(opponent, target):
+            raise Exception("Cannot scuttle a point card you control")
         if (
             card.point_value() == target.point_value()
             and card.suit_value() <= target.suit_value()
@@ -723,7 +773,7 @@ class GameState:
                 return
             log_print(discard_prompt)
 
-            if self.use_ai and self.current_action_player == opponent:
+            if self.use_ai and opponent == 1:
                 if self.ai_player is not None:
                     chosen_cards = self.ai_player.choose_two_cards_from_hand(
                         self.hands[opponent]
@@ -742,7 +792,7 @@ class GameState:
                            discarded_card = self.hands[opponent].pop(0)
                            self.discard_pile.append(discarded_card)
                            discarded_card.clear_player_info()
-            else:
+            elif self.input_mode == "terminal":
                 cards_to_discard = []
                 cards_remaining = self.hands[opponent].copy()
 
@@ -775,6 +825,12 @@ class GameState:
                         chosen_card.clear_player_info()
                     else:
                         log_print("Invalid selection")
+            else:
+                self.resolving_four = True
+                self.pending_four_player = opponent
+                self.pending_four_count = min(2, len(self.hands[opponent]))
+                self.current_action_player = opponent
+                return
         elif card.rank == Rank.FIVE:
             if len(self.hands[self.turn]) <= 6:
                 self.draw_card(2)
@@ -888,6 +944,19 @@ class GameState:
                     )
                 )
             return actions
+        if self.resolving_four:
+            if self.pending_four_player is None:
+                return []
+            for card in self.hands[self.pending_four_player]:
+                actions.append(
+                    Action(
+                        ActionType.DISCARD_FROM_HAND,
+                        self.pending_four_player,
+                        card=card,
+                        source=ActionSource.HAND,
+                    )
+                )
+            return actions
 
         # If resolving one-off, only allow counter or resolve
         if self.resolving_one_off:
@@ -968,10 +1037,13 @@ class GameState:
 
         # Can scuttle opponent's point cards with higher point cards (only point cards can scuttle)
         opponent = (self.turn + 1) % len(self.hands)
-        opponent_field = self.fields[opponent]
-        opponent_points = [
-            card for card in opponent_field if card.purpose == Purpose.POINTS
-        ]
+        opponent_points = []
+        for card in self.fields[opponent]:
+            if self._is_point_controlled_by(opponent, card):
+                opponent_points.append(card)
+        for card in self.fields[self.turn]:
+            if self._is_point_controlled_by(opponent, card):
+                opponent_points.append(card)
 
         # Get point cards from hand (Ace to Ten)
         point_cards = [card for card in hand if card.point_value() <= Rank.TEN.value[1]]
@@ -1057,6 +1129,9 @@ class GameState:
             "resolving_one_off": self.resolving_one_off,
             "resolving_three": self.resolving_three,
             "pending_three_player": self.pending_three_player,
+            "resolving_four": self.resolving_four,
+            "pending_four_player": self.pending_four_player,
+            "pending_four_count": self.pending_four_count,
             "one_off_card_to_counter": self.one_off_card_to_counter.to_dict()
             if self.one_off_card_to_counter is not None
             else None,
@@ -1104,6 +1179,9 @@ class GameState:
         state.resolving_one_off = data.get("resolving_one_off", False)
         state.resolving_three = data.get("resolving_three", False)
         state.pending_three_player = data.get("pending_three_player")
+        state.resolving_four = data.get("resolving_four", False)
+        state.pending_four_player = data.get("pending_four_player")
+        state.pending_four_count = data.get("pending_four_count", 0)
         state.one_off_card_to_counter = (
             Card.from_dict(one_off_counter_data)
             if one_off_counter_data is not None

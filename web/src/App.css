@@ -94,6 +94,39 @@
 .controls {
   display: flex;
   gap: 10px;
+  align-items: center;
+}
+
+.ai-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 221, 181, 0.25);
+  background: rgba(255, 221, 181, 0.08);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  color: var(--ink-70);
+}
+
+.ai-select span {
+  font-size: 11px;
+  letter-spacing: 1.6px;
+  color: var(--ink-60);
+}
+
+.ai-select select {
+  appearance: none;
+  background: rgba(20, 12, 8, 0.25);
+  border: 1px solid rgba(255, 221, 181, 0.3);
+  color: var(--ink-90);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
 }
 
 .table {
@@ -448,9 +481,23 @@
 }
 
 .card-suit {
-  font-size: 16px;
-  text-transform: uppercase;
-  letter-spacing: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.suit-icon {
+  stroke-width: 2.5;
+}
+
+.suit-red {
+  stroke: #c62828;
+  fill: none;
+}
+
+.suit-black {
+  stroke: #1a1a1a;
+  fill: none;
 }
 
 .card-tag {

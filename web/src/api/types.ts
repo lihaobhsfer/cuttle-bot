@@ -37,9 +37,11 @@ export type GameStateView = {
   resolving_two: boolean
   resolving_one_off: boolean
   resolving_three: boolean
+  resolving_four: boolean
   overall_turn: number
   use_ai: boolean
   one_off_card_to_counter: CardView | null
+  pending_four_count: number
 }
 
 export type SessionResponse = {
@@ -56,6 +58,8 @@ export type ActionResponse = {
   state_version: number
   last_actions: ActionView[]
 }
+
+export type AiType = 'llm' | 'rl'
 
 export type HistoryEntry = {
   timestamp: string

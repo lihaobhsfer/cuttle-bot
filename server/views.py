@@ -86,9 +86,11 @@ def game_state_view(
         resolving_two=game_state.resolving_two,
         resolving_one_off=game_state.resolving_one_off,
         resolving_three=game_state.resolving_three,
+        resolving_four=game_state.resolving_four,
         overall_turn=game_state.overall_turn,
         use_ai=game_state.use_ai,
         one_off_card_to_counter=card_view(game_state.one_off_card_to_counter)
         if game_state.one_off_card_to_counter
         else None,
+        pending_four_count=game_state.pending_four_count,
     )

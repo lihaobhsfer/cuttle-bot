@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { type ChangeEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { Club, Diamond, Heart, Spade } from 'lucide-react'
 import './App.css'
 import { useGameSession } from './api/hooks'
-import type { ActionView, CardView } from './api/types'
+import type { ActionView, AiType, CardView } from './api/types'
 
 function App() {
+  const [aiType, setAiType] = useState<AiType>('rl')
   const {
     session,
     history,
@@ -12,7 +14,7 @@ function App() {
     submitAction,
     isSubmitting,
     startNewSession,
-  } = useGameSession()
+  } = useGameSession({ aiType })
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
   const [selectedActionId, setSelectedActionId] = useState<number | null>(null)
 
@@ -35,10 +37,19 @@ function App() {
     () => legalActions.filter((action) => action.type === 'Take From Discard'),
     [legalActions],
   )
+  const fourDiscardActions = useMemo(
+    () => legalActions.filter((action) => action.type === 'Discard From Hand'),
+    [legalActions],
+  )
   const modalActive =
-    Boolean(state?.resolving_one_off) && state?.current_action_player === 0
+    Boolean(state?.resolving_one_off) &&
+    state?.current_action_player === 0 &&
+    !state?.resolving_three &&
+    !state?.resolving_four
   const discardModalActive =
     Boolean(state?.resolving_three) && state?.current_action_player === 0
+  const fourDiscardModalActive =
+    Boolean(state?.resolving_four) && state?.current_action_player === 0
   const modalCard = state?.one_off_card_to_counter ?? null
 
   const actionChoices = useMemo(() => {
@@ -90,6 +101,12 @@ function App() {
       }
       return
     }
+    if (fourDiscardModalActive) {
+      if (selectedActionId === null && fourDiscardActions.length > 0) {
+        setSelectedActionId(fourDiscardActions[0].id)
+      }
+      return
+    }
     if (!modalActive) return
     if (selectedActionId !== null) return
     if (modalActions.length > 0) {
@@ -98,6 +115,8 @@ function App() {
   }, [
     discardModalActive,
     discardActions,
+    fourDiscardModalActive,
+    fourDiscardActions,
     modalActive,
     modalActions,
     selectedActionId,
@@ -118,6 +137,15 @@ function App() {
       actionId: selectedActionId,
       stateVersion: session.state_version,
     })
+    setSelectedActionId(null)
+    setSelectedCardId(null)
+  }
+
+  const handleAiChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    const nextType = event.target.value as AiType
+    if (nextType === aiType) return
+    setAiType(nextType)
+    startNewSession(nextType)
   }
 
   return (
@@ -142,11 +170,18 @@ function App() {
           </div>
         </div>
         <div className="controls">
+          <label className="ai-select">
+            <span>AI</span>
+            <select value={aiType} onChange={handleAiChange}>
+              <option value="rl">RL</option>
+              <option value="llm">LLM</option>
+            </select>
+          </label>
           <button className="ghost">History</button>
-          <button className="ghost" onClick={startNewSession}>
+          <button className="ghost" onClick={() => startNewSession()}>
             New Game
           </button>
-          <button className="primary" onClick={startNewSession}>
+          <button className="primary" onClick={() => startNewSession()}>
             End Game
           </button>
         </div>
@@ -330,7 +365,7 @@ function App() {
               </div>
             </div>
             <div className="modal-footer">
-              <button className="primary" onClick={startNewSession}>
+              <button className="primary" onClick={() => startNewSession()}>
                 New Game
               </button>
             </div>
@@ -376,6 +411,51 @@ function App() {
                 disabled={selectedActionId === null || isSubmitting || !session}
               >
                 {isSubmitting ? 'Sending...' : 'Take card'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {fourDiscardModalActive && (
+        <div className="modal-scrim">
+          <div className="modal">
+            <div className="modal-header">
+              <div>
+                <div className="modal-title">Discard Cards</div>
+                <div className="modal-sub">
+                  Select {state?.pending_four_count ?? 0} card
+                  {state?.pending_four_count === 1 ? '' : 's'} to discard.
+                </div>
+              </div>
+              <button
+                className="ghost small"
+                onClick={() => setSelectedActionId(null)}
+              >
+                Close
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="modal-actions">
+                {fourDiscardActions.map((action) => (
+                  <button
+                    key={action.id}
+                    className={`ghost ${
+                      selectedActionId === action.id ? 'selected-action' : ''
+                    }`}
+                    onClick={() => handleActionSelect(action)}
+                  >
+                    {action.card ? action.card.display : action.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button
+                className="primary"
+                onClick={handleConfirm}
+                disabled={selectedActionId === null || isSubmitting || !session}
+              >
+                {isSubmitting ? 'Sending...' : 'Discard'}
               </button>
             </div>
           </div>
@@ -480,20 +560,26 @@ function rankShort(rank: string) {
   return map[rank] ?? rank
 }
 
-function suitShort(suit: string) {
-  const map: Record<string, string> = {
-    CLUBS: 'C',
-    DIAMONDS: 'D',
-    HEARTS: 'H',
-    SPADES: 'S',
+function SuitIcon({ suit, size = 20 }: { suit: string; size?: number }) {
+  const suitProps = { size, strokeWidth: 2.5 }
+  
+  switch (suit) {
+    case 'CLUBS':
+      return <Club {...suitProps} className="suit-icon suit-black" />
+    case 'DIAMONDS':
+      return <Diamond {...suitProps} className="suit-icon suit-red" />
+    case 'HEARTS':
+      return <Heart {...suitProps} className="suit-icon suit-red" />
+    case 'SPADES':
+      return <Spade {...suitProps} className="suit-icon suit-black" />
+    default:
+      return <span>{suit}</span>
   }
-  return map[suit] ?? suit
 }
 
 function CardTile({ card, selected, isHand, onClick }: CardTileProps) {
   const tag = cardTag(card)
   const rank = rankShort(card.rank)
-  const suit = suitShort(card.suit)
 
   return (
     <div
@@ -509,7 +595,9 @@ function CardTile({ card, selected, isHand, onClick }: CardTileProps) {
       data-testid={`card-${card.id}`}
     >
       <div className="card-rank">{rank}</div>
-      <div className="card-suit">{suit}</div>
+      <div className="card-suit">
+        <SuitIcon suit={card.suit} />
+      </div>
       <div className="card-tag">{tag}</div>
     </div>
   )

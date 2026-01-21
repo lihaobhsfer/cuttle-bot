@@ -13,17 +13,14 @@ from server.models import ActionRequest, CreateSessionRequest
 from server.session_store import GameSession, SessionStore
 from server.views import action_view, actions_view, game_state_view
 
-try:
-    from game.rl_ai_player import RLAIPlayerWrapper as AIPlayer
-except ImportError:  # pragma: no cover - defensive for limited environments
-    AIPlayer = None  # type: ignore[assignment]
+from server.session_store import AIPlayerProtocol
 
 
 def _update_game_state(game: Game, turn_finished: bool) -> None:
     if turn_finished:
         game.game_state.resolving_one_off = False
 
-    if game.game_state.resolving_three:
+    if game.game_state.resolving_three or game.game_state.resolving_four:
         return
 
     if game.game_state.resolving_one_off:
@@ -38,6 +35,7 @@ def _is_ai_turn(game: Game) -> bool:
         state.use_ai
         and (
             (state.resolving_one_off and state.current_action_player == 1)
+            or (state.resolving_four and state.current_action_player == 1)
             or (not state.resolving_one_off and state.turn == 1)
         )
     )
@@ -80,7 +78,7 @@ async def _apply_ai_turns(session: GameSession) -> List[Action]:
 
 def create_app(
     session_store: Optional[SessionStore] = None,
-    ai_player_factory: Optional[Callable[[], "AIPlayer"]] = None,
+    ai_player_factory: Optional[Callable[[], AIPlayerProtocol]] = None,
 ) -> FastAPI:
     """Create and configure the FastAPI app."""
     store = session_store or SessionStore()
@@ -92,11 +90,15 @@ def create_app(
 
     @app.post("/api/sessions")
     async def create_session(payload: CreateSessionRequest) -> dict:
-        session = await store.create_session(
-            use_ai=payload.use_ai,
-            manual_selection=payload.manual_selection,
-            ai_player_factory=ai_player_factory,
-        )
+        try:
+            session = await store.create_session(
+                use_ai=payload.use_ai,
+                manual_selection=payload.manual_selection,
+                ai_player_factory=ai_player_factory,
+                ai_type=payload.ai_type,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         hide_hand = 1 if payload.use_ai else None
         legal_actions = session.game.game_state.get_legal_actions()
         return {

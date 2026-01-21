@@ -1,5 +1,6 @@
 import type {
   ActionResponse,
+  AiType,
   HistoryResponse,
   SessionResponse,
 } from './types'
@@ -20,10 +21,14 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return (await response.json()) as T
 }
 
-export function createSession(): Promise<SessionResponse> {
+export function createSession(aiType: AiType = 'rl'): Promise<SessionResponse> {
   return request('/api/sessions', {
     method: 'POST',
-    body: JSON.stringify({ use_ai: true, manual_selection: false }),
+    body: JSON.stringify({
+      use_ai: true,
+      manual_selection: false,
+      ai_type: aiType,
+    }),
   })
 }
 
